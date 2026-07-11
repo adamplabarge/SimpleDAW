@@ -58,6 +58,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OpenProjectCommand = new RelayCommand(OpenProject);
         SaveProjectCommand = new RelayCommand(SaveProject);
         SaveProjectAsCommand = new RelayCommand(SaveProjectAs);
+        MixdownCommand = new RelayCommand(Mixdown, () => Tracks.Any(t => t.HasAudio));
         ZoomInCommand = new RelayCommand(() => PixelsPerSecond = Math.Min(1000.0, PixelsPerSecond * 1.5));
         ZoomOutCommand = new RelayCommand(() => PixelsPerSecond = Math.Max(10.0, PixelsPerSecond / 1.5));
 
@@ -98,6 +99,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand OpenProjectCommand { get; }
     public RelayCommand SaveProjectCommand { get; }
     public RelayCommand SaveProjectAsCommand { get; }
+    public RelayCommand MixdownCommand { get; }
     public RelayCommand ZoomInCommand { get; }
     public RelayCommand ZoomOutCommand { get; }
 
@@ -632,6 +634,59 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private void Mixdown()
+    {
+        if (!Tracks.Any(t => t.HasAudio))
+        {
+            AudioStatus = "Nothing to mix down yet \u2013 record or load some audio first.";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "WAV audio (*.wav)|*.wav",
+            DefaultExt = ".wav",
+            FileName = "Mixdown.wav",
+        };
+
+        if (!string.IsNullOrEmpty(_currentProjectPath))
+        {
+            dialog.InitialDirectory = Path.GetDirectoryName(_currentProjectPath);
+        }
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        // Stop the transport so recorded files are closed and the device is free.
+        Stop();
+
+        try
+        {
+            bool exported = MixdownExporter.Export(Tracks.ToList(), _sampleRate, dialog.FileName);
+            AudioStatus = exported
+                ? $"Exported mix: {Path.GetFileName(dialog.FileName)}"
+                : "Nothing to mix down.";
+        }
+        catch (Exception ex)
+        {
+            AudioStatus = $"Mixdown failed: {ex.Message}";
+        }
+    }
+
+    private static string FormatDuration(double seconds)
+    {
+        if (seconds < 0)
+        {
+            seconds = 0;
+        }
+
+        int minutes = (int)(seconds / 60);
+        double secs = seconds - (minutes * 60);
+        return $"{minutes}:{secs:00.0}";
+    }
+
     private void Play()
     {
         if (HasPlayableAudio)
@@ -739,6 +794,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         foreach (var track in Tracks)
         {
             double d = track.Waveform.DurationSeconds;
+            track.DurationText = FormatDuration(d);
             if (d > maxDuration)
             {
                 maxDuration = d;
@@ -783,6 +839,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         PlayCommand.RaiseCanExecuteChanged();
         RecordCommand.RaiseCanExecuteChanged();
         StopCommand.RaiseCanExecuteChanged();
+        MixdownCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(Mode));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(MidiClockStatus));

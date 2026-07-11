@@ -239,6 +239,8 @@
                 <MenuItem Header="_Save" Command="{Binding SaveProjectCommand}"/>
                 <MenuItem Header="Save _As…" Command="{Binding SaveProjectAsCommand}"/>
                 <Separator/>
+                <MenuItem Header="_Export Stereo Mix…" Command="{Binding MixdownCommand}"/>
+                <Separator/>
                 <MenuItem Header="E_xit" Click="OnExitClick"/>
             </MenuItem>
         </Menu>
@@ -428,19 +430,24 @@
                                              Foreground="#4EC94E" Background="#1A1A1A"
                                              VerticalAlignment="Center" Margin="0,0,10,0"/>
 
-                                <TextBlock Grid.Column="7" Text="●" FontSize="16"
-                                           ToolTip="Has recorded audio">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground" Value="#555555"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasAudio}" Value="True">
-                                                    <Setter Property="Foreground" Value="#4EC94E"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                <StackPanel Grid.Column="7" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding DurationText}" FontSize="11"
+                                               Foreground="#AAAAAA" VerticalAlignment="Center"
+                                               Margin="0,0,6,0" ToolTip="Recorded length (m:ss.d)"/>
+                                    <TextBlock Text="●" FontSize="16"
+                                               ToolTip="Has recorded audio" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#555555"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasAudio}" Value="True">
+                                                        <Setter Property="Foreground" Value="#4EC94E"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
                             </Grid>
                             <local:WaveformView Height="60" Margin="0,8,0,0"
                                                 Buffer="{Binding Waveform}"

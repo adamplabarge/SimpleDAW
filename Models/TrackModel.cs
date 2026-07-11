@@ -19,6 +19,7 @@ public class TrackModel : INotifyPropertyChanged
     private float _pan;
     private float _level;
     private string? _recordedFilePath;
+    private string _durationText = "0:00.0";
 
     /// <summary>Display name of the track.</summary>
     public string Name
@@ -67,6 +68,13 @@ public class TrackModel : INotifyPropertyChanged
     {
         get => _level;
         set => Set(ref _level, value);
+    }
+
+    /// <summary>Formatted length of the recorded/loaded audio (m:ss.d).</summary>
+    public string DurationText
+    {
+        get => _durationText;
+        set => Set(ref _durationText, value);
     }
 
     /// <summary>Path to the WAV file holding this track's recorded audio, if any.</summary>
