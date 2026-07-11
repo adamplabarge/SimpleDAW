@@ -214,6 +214,13 @@ public sealed class AudioEngine : IDisposable
     private void StartAsioStream(bool subscribeStopped)
     {
         var asio = new AsioOut(AsioDriverName);
+
+        // Store the instance immediately so that if InitRecordAndPlayback/Play throws
+        // (e.g. ASE_NotPresent), Stop() disposes it and releases the ASIO driver.
+        // Otherwise the failed instance leaks, keeps the driver locked, and every
+        // subsequent start attempt also fails with ASE_NotPresent.
+        _asio = asio;
+
         int inputChannels = asio.DriverInputChannelCount;
         LastInputChannelCount = inputChannels;
 
@@ -224,13 +231,16 @@ public sealed class AudioEngine : IDisposable
         }
 
         var mixer = BuildMixer();
-        IWaveProvider asioOutput = UseAsioOutput
-            ? new SampleToWaveProvider(mixer)
-            : new SilenceProvider(WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, 2));
 
-        asio.InitRecordAndPlayback(asioOutput, inputChannels, SampleRate);
+        // Only initialise the ASIO device's OUTPUT when we actually render through
+        // ASIO. When output is routed to Windows (WASAPI), open ASIO record-only by
+        // passing a null provider. Forcing an ASIO output here makes the driver claim
+        // its output channels, which fails with ASE_NotPresent when the same device
+        // is already held by the Windows audio engine (e.g. it's the default device).
+        IWaveProvider? asioOutput = UseAsioOutput ? new SampleToWaveProvider(mixer) : null;
+
+        asio.InitRecordAndPlayback(asioOutput!, inputChannels, SampleRate);
         asio.Play();
-        _asio = asio;
 
         if (!UseAsioOutput)
         {

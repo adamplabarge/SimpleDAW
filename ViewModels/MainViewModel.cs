@@ -35,6 +35,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _monitorEnabled = true;
     private string _audioStatus = "Idle";
     private string? _currentProjectPath;
+    private string _recordDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        "SimpleDAW", "Recordings");
     private bool _suppressMonitor;
     private double _pixelsPerSecond = 80.0;
     private double _timelineOffsetSeconds;
@@ -260,9 +263,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public string RecordDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-        "SimpleDAW", "Recordings");
+    public string RecordDirectory
+    {
+        get => _recordDirectory;
+        private set => Set(ref _recordDirectory, value);
+    }
 
     private bool HasArmedTrack => Tracks.Any(t => t.IsArmed);
     private bool HasPlayableAudio => Tracks.Any(t => t.HasAudio);
@@ -445,6 +450,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         ClearTracks();
         _trackCounter = 0;
         _currentProjectPath = null;
+        UpdateRecordDirectory();
         AddTrack();
         AddTrack();
     }
@@ -522,6 +528,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         SelectedTrack = Tracks.LastOrDefault();
         _currentProjectPath = path;
+        UpdateRecordDirectory();
 
         _suppressMonitor = false;
         RefreshInputChannels();
@@ -552,8 +559,43 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (dialog.ShowDialog() == true)
         {
             _currentProjectPath = dialog.FileName;
+            UpdateRecordDirectory();
             WriteProject(dialog.FileName);
         }
+    }
+
+    private void UpdateRecordDirectory()
+    {
+        if (!string.IsNullOrEmpty(_currentProjectPath))
+        {
+            string? projectDir = Path.GetDirectoryName(_currentProjectPath);
+            if (!string.IsNullOrEmpty(projectDir))
+            {
+                RecordDirectory = Path.Combine(projectDir, "Recordings");
+                return;
+            }
+        }
+
+        RecordDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "SimpleDAW", "Recordings");
+    }
+
+    private string? EnsureRecordDirectoryForRecording()
+    {
+        if (string.IsNullOrEmpty(_currentProjectPath))
+        {
+            AudioStatus = "Save the project to choose where recordings are written.";
+            SaveProjectAs();
+        }
+
+        if (string.IsNullOrEmpty(_currentProjectPath))
+        {
+            AudioStatus = "Recording cancelled: no project save location selected.";
+            return null;
+        }
+
+        return RecordDirectory;
     }
 
     private void WriteProject(string path)
@@ -610,7 +652,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (HasArmedTrack)
         {
-            _engine.StartRecording(Tracks.ToList(), RecordDirectory);
+            string? recordDirectory = EnsureRecordDirectoryForRecording();
+            if (recordDirectory == null)
+            {
+                return;
+            }
+
+            _engine.StartRecording(Tracks.ToList(), recordDirectory);
             _midiStatusNote = "Running";
         }
         else

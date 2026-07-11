@@ -458,7 +458,7 @@
 
         <!-- Footer -->
         <TextBlock Grid.Row="4" Margin="2,8,0,0" Foreground="#888888"
-                   Text="{Binding RecordDirectory, StringFormat=Recordings saved to: {0}}"/>
+                   Text="{Binding RecordDirectory, StringFormat=Recordings folder: {0}}"/>
         </Grid>
     </DockPanel>
 </Window>
