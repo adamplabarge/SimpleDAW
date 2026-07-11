@@ -1,0 +1,45 @@
+# Build outputs
+**/bin/
+**/obj/
+
+# Publish outputs
+**/publish/
+**/app.publish/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE folders
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Logs
+*.log
+
+# NuGet packages and symbols
+*.nupkg
+*.snupkg
+
+# Test results and coverage
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Rider / ReSharper
+_ReSharper*/
+*.DotSettings.user
+
+# Installer build outputs (keep script, ignore generated binaries)
+installer/output/
+
+# OS files
+.DS_Store
+Thumbs.db
