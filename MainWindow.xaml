@@ -424,6 +424,12 @@
                 <ScrollBar DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="4"
                            Minimum="0" Maximum="{Binding TimelineMaxSeconds}"
                            Value="{Binding TimelineOffsetSeconds}" ViewportSize="1"/>
+                <!-- Single shared ruler: drawn once per frame instead of once per track. -->
+                <local:TimelineRulerView DockPanel.Dock="Top" Height="18" Margin="12,4,12,0"
+                                         PixelsPerSecond="{Binding PixelsPerSecond}"
+                                         PlayheadSeconds="{Binding PlayheadSeconds}"
+                                         ManualOffsetSeconds="{Binding TimelineOffsetSeconds}"
+                                         IsFollowing="{Binding IsTransportActive}"/>
                 <ListBox ItemsSource="{Binding Tracks}" SelectedItem="{Binding SelectedTrack}"
                          Background="Transparent" BorderThickness="0"
                          HorizontalContentAlignment="Stretch"

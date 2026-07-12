@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 
@@ -7,7 +6,9 @@ namespace SimpleDAW;
 /// <summary>
 /// Lightweight waveform display. Draws the min/max envelope stored in a
 /// <see cref="WaveformBuffer"/> as a filled shape around a centre line, and
-/// repaints itself as new audio arrives while recording.
+/// repaints itself as new audio arrives while recording. The time ruler is
+/// drawn once by the shared <see cref="TimelineRulerView"/> instead of being
+/// duplicated in every track's view.
 /// </summary>
 public sealed class WaveformView : FrameworkElement
 {
@@ -15,13 +16,9 @@ public sealed class WaveformView : FrameworkElement
     private static readonly Brush CentreBrush = CreateFrozen("#3A3A3A");
     private static readonly Brush WaveBrush = CreateFrozen("#4EC94E");
     private static readonly Brush PlayheadBrush = CreateFrozen("#FF5050");
-    private static readonly Brush GridBrush = CreateFrozen("#2E2E2E");
-    private static readonly Brush LabelBrush = CreateFrozen("#8A8A8A");
-    private static readonly Typeface LabelTypeface = new("Segoe UI");
 
     private readonly Pen _centrePen;
     private readonly Pen _playheadPen;
-    private readonly Pen _gridPen;
     private int _lastVersion = -1;
 
     public WaveformView()
@@ -30,8 +27,6 @@ public sealed class WaveformView : FrameworkElement
         _centrePen.Freeze();
         _playheadPen = new Pen(PlayheadBrush, 1.5);
         _playheadPen.Freeze();
-        _gridPen = new Pen(GridBrush, 1);
-        _gridPen.Freeze();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -109,17 +104,8 @@ public sealed class WaveformView : FrameworkElement
         }
     }
 
-    private double GetOffsetSeconds(double width)
-    {
-        double pps = PixelsPerSecond > 0 ? PixelsPerSecond : 1.0;
-        if (IsFollowing)
-        {
-            double viewportSeconds = width / pps;
-            return Math.Max(0.0, PlayheadSeconds - (viewportSeconds * 0.5));
-        }
-
-        return Math.Max(0.0, ManualOffsetSeconds);
-    }
+    private double GetOffsetSeconds(double width) =>
+        TimelineMath.GetOffsetSeconds(width, PixelsPerSecond, IsFollowing, PlayheadSeconds, ManualOffsetSeconds);
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -137,8 +123,6 @@ public sealed class WaveformView : FrameworkElement
 
         double pps = PixelsPerSecond > 0 ? PixelsPerSecond : 1.0;
         double offset = GetOffsetSeconds(width);
-
-        DrawTimeRuler(dc, width, height, pps, offset);
 
         var buffer = Buffer;
         if (buffer != null && buffer.Count > 0)
@@ -179,56 +163,5 @@ public sealed class WaveformView : FrameworkElement
         var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
         brush.Freeze();
         return brush;
-    }
-
-    private void DrawTimeRuler(DrawingContext dc, double width, double height, double pps, double offset)
-    {
-        const double minLabelSpacingPx = 64.0;
-        double interval = NiceInterval(minLabelSpacingPx / pps);
-        double pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        double firstTick = Math.Ceiling(offset / interval) * interval;
-
-        for (double t = firstTick; ; t += interval)
-        {
-            double x = (t - offset) * pps;
-            if (x > width)
-            {
-                break;
-            }
-
-            dc.DrawLine(_gridPen, new Point(x, 0), new Point(x, height));
-
-            var label = new FormattedText(
-                FormatTick(t, interval),
-                CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight,
-                LabelTypeface,
-                10.0,
-                LabelBrush,
-                pixelsPerDip);
-
-            dc.DrawText(label, new Point(x + 3, 1));
-        }
-    }
-
-    private static double NiceInterval(double seconds)
-    {
-        double[] steps = { 0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300 };
-        foreach (double step in steps)
-        {
-            if (step >= seconds)
-            {
-                return step;
-            }
-        }
-
-        return 600;
-    }
-
-    private static string FormatTick(double seconds, double interval)
-    {
-        int minutes = (int)(seconds / 60);
-        double secs = seconds - (minutes * 60);
-        return interval < 1.0 ? $"{minutes}:{secs:00.0}" : $"{minutes}:{secs:00}";
     }
 }
