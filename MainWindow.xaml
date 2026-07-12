@@ -163,6 +163,43 @@
             </Setter>
         </Style>
 
+        <!-- Blue "M" mute toggle used by tracks and input channel meters -->
+        <Style x:Key="MuteToggleButton" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="#8FB8DE"/>
+            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="BorderBrush" Value="#3A6EA5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Root" CornerRadius="3"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#33465A"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#2D7DD2"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#5AA0E0"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsChecked" Value="True"/>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Root" Property="Background" Value="#3B8FE0"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Dark menu styling -->
         <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
             <Setter Property="Template">
@@ -270,6 +307,10 @@
                 <TextBox Width="60" VerticalContentAlignment="Center"
                          Text="{Binding Tempo, UpdateSourceTrigger=LostFocus, StringFormat=F1}"/>
 
+                <CheckBox Content="Send MIDI clock" Foreground="#EEEEEE" VerticalAlignment="Center"
+                          Margin="16,0,0,0" IsChecked="{Binding SendMidiClock}"
+                          ToolTip="When unchecked, Play/Record run without sending a MIDI clock"/>
+
                 <TextBlock Text="Sample rate" Margin="24,0,6,0"/>
                 <ComboBox Width="90"
                           ItemsSource="{Binding SampleRateOptions}"
@@ -335,6 +376,11 @@
                                                  Foreground="#4EC94E" Background="#1A1A1A"/>
                                     <TextBlock Text="{Binding Label}" FontSize="10"
                                                HorizontalAlignment="Center" Foreground="#AAAAAA"/>
+                                    <ToggleButton Content="M" Width="22" Height="20" Margin="0,3,0,0"
+                                                  FontSize="11"
+                                                  IsChecked="{Binding IsMuted}"
+                                                  ToolTip="Mute this input channel (meter keeps moving)"
+                                                  Style="{StaticResource MuteToggleButton}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -350,8 +396,6 @@
         <!-- Track toolbar -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2,0,0,6">
             <Button Content="+ Add Track" Padding="10,4" Command="{Binding AddTrackCommand}"/>
-            <Button Content="– Remove Track" Padding="10,4" Margin="8,0,0,0"
-                    Command="{Binding RemoveTrackCommand}"/>
             <Border Width="1" Background="#4A4A4A" Margin="12,2,12,2"/>
             <TextBlock Text="Zoom" Margin="0,0,6,0"/>
             <Button Content="−" Width="30" Padding="0,4" Command="{Binding ZoomOutCommand}"/>
@@ -384,6 +428,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
                                 <TextBox Grid.Column="0" Text="{Binding Name}"
@@ -408,9 +453,11 @@
                                     </ComboBox>
                                 </StackPanel>
 
-                                <CheckBox Grid.Column="3" Content="Mute" Foreground="#EEEEEE"
-                                          VerticalAlignment="Center" Margin="0,0,10,0"
-                                          IsChecked="{Binding IsMuted}"/>
+                                <ToggleButton Grid.Column="3" Content="M" Width="30" Height="30"
+                                              VerticalAlignment="Center" Margin="0,0,10,0"
+                                              IsChecked="{Binding IsMuted}"
+                                              ToolTip="Mute this track"
+                                              Style="{StaticResource MuteToggleButton}"/>
 
                                 <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="0,0,10,0">
                                     <TextBlock Text="Vol" Margin="0,0,4,0" Foreground="#EEEEEE"/>
@@ -448,6 +495,13 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
+
+                                <Button Grid.Column="8" Content="✕" Width="28" Height="28"
+                                        VerticalAlignment="Center" Margin="10,0,0,0"
+                                        ToolTip="Remove this track"
+                                        Foreground="#FF9A9A"
+                                        Command="{Binding DataContext.RemoveTrackCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"/>
                             </Grid>
                             <local:WaveformView Height="60" Margin="0,8,0,0"
                                                 Buffer="{Binding Waveform}"

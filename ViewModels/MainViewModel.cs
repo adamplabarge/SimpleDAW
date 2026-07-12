@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -33,6 +34,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _trackCounter;
     private string _midiStatusNote = "Idle";
     private bool _monitorEnabled = true;
+    private bool _sendMidiClock = true;
     private string _audioStatus = "Idle";
     private string? _currentProjectPath;
     private string _recordDirectory = Path.Combine(
@@ -47,7 +49,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public MainViewModel()
     {
         AddTrackCommand = new RelayCommand(AddTrack);
-        RemoveTrackCommand = new RelayCommand(RemoveSelectedTrack, () => SelectedTrack != null);
+        RemoveTrackCommand = new RelayCommand<TrackModel>(RemoveTrack);
         PlayCommand = new RelayCommand(Play, () => Mode == TransportMode.Stopped);
         RecordCommand = new RelayCommand(Record, () => Mode == TransportMode.Stopped);
         StopCommand = new RelayCommand(Stop, () => Mode != TransportMode.Stopped || _midiClock.IsRunning);
@@ -88,7 +90,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public int[] SampleRateOptions { get; } = { 44100, 48000, 88200, 96000 };
 
     public RelayCommand AddTrackCommand { get; }
-    public RelayCommand RemoveTrackCommand { get; }
+    public RelayCommand<TrackModel> RemoveTrackCommand { get; }
     public RelayCommand PlayCommand { get; }
     public RelayCommand RecordCommand { get; }
     public RelayCommand StopCommand { get; }
@@ -126,6 +128,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 return $"MIDI clock: running on {_midiClock.ActiveDeviceName} @ {Tempo:F1} BPM (pulses: {_midiClock.PulseCount})";
             }
 
+            if (!SendMidiClock)
+            {
+                return "MIDI clock: disabled";
+            }
+
             if (SelectedMidiDevice == NoMidiLabel)
             {
                 return "MIDI clock: no output selected";
@@ -139,13 +146,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public TrackModel? SelectedTrack
     {
         get => _selectedTrack;
-        set
-        {
-            if (Set(ref _selectedTrack, value))
-            {
-                RemoveTrackCommand.RaiseCanExecuteChanged();
-            }
-        }
+        set => Set(ref _selectedTrack, value);
     }
 
     public string SelectedAudioDevice
@@ -215,6 +216,25 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             if (Set(ref _monitorEnabled, value))
             {
                 _engine.MonitorEnabled = value;
+            }
+        }
+    }
+
+    public bool SendMidiClock
+    {
+        get => _sendMidiClock;
+        set
+        {
+            if (Set(ref _sendMidiClock, value))
+            {
+                if (!value && _midiClock.IsRunning)
+                {
+                    _midiClock.Stop();
+                    _midiStatusNote = "Clock disabled";
+                    StopCommand.RaiseCanExecuteChanged();
+                }
+
+                OnPropertyChanged(nameof(MidiClockStatus));
             }
         }
     }
@@ -388,12 +408,32 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        foreach (var meter in MasterInputMeters)
+        {
+            meter.PropertyChanged -= OnInputMeterPropertyChanged;
+        }
+
         MasterInputMeters.Clear();
         for (int i = 0; i < count; i++)
         {
-            MasterInputMeters.Add(new ChannelMeter(i, ChannelLabels.Label(i, count), ChannelLabels.IsMain(i, count)));
+            var meter = new ChannelMeter(i, ChannelLabels.Label(i, count), ChannelLabels.IsMain(i, count));
+            meter.PropertyChanged += OnInputMeterPropertyChanged;
+            MasterInputMeters.Add(meter);
+        }
+
+        PushMutedInputChannels();
+    }
+
+    private void OnInputMeterPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ChannelMeter.IsMuted))
+        {
+            PushMutedInputChannels();
         }
     }
+
+    private void PushMutedInputChannels() =>
+        _engine.SetMutedInputChannels(MasterInputMeters.Where(m => m.IsMuted).Select(m => m.Index));
 
     private void AddTrack()
     {
@@ -410,16 +450,32 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         StartMonitorSafe();
     }
 
-    private void RemoveSelectedTrack()
+    private void RemoveTrack(TrackModel? track)
     {
-        if (SelectedTrack == null)
+        track ??= SelectedTrack;
+        if (track == null)
         {
             return;
         }
 
-        SelectedTrack.PropertyChanged -= OnTrackPropertyChanged;
-        Tracks.Remove(SelectedTrack);
-        SelectedTrack = Tracks.LastOrDefault();
+        var result = MessageBox.Show(
+            $"Remove \"{track.Name}\"? This cannot be undone.",
+            "Remove Track",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        track.PropertyChanged -= OnTrackPropertyChanged;
+        Tracks.Remove(track);
+        if (SelectedTrack == track)
+        {
+            SelectedTrack = Tracks.LastOrDefault();
+        }
+
         RefreshTransport();
         StartMonitorSafe();
     }
@@ -508,6 +564,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         Tempo = project.Tempo;
         MonitorEnabled = project.MonitorEnabled;
+        SendMidiClock = project.SendMidiClock;
 
         foreach (var pt in project.Tracks)
         {
@@ -610,6 +667,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             MidiDevice = _selectedMidiDevice,
             Tempo = _tempo,
             MonitorEnabled = _monitorEnabled,
+            SendMidiClock = _sendMidiClock,
             Tracks = Tracks.Select(t => new ProjectTrack
             {
                 Name = t.Name,
@@ -749,6 +807,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void StartMidiClock()
     {
+        if (!SendMidiClock)
+        {
+            _midiStatusNote = "Clock disabled";
+            OnPropertyChanged(nameof(MidiClockStatus));
+            return;
+        }
+
         _midiClock.Bpm = _tempo;
         int index = MidiDevices.IndexOf(_selectedMidiDevice) - 1; // -1 accounts for the "None" entry
         bool started = _midiClock.Start(index);

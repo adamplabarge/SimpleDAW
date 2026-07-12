@@ -20,6 +20,22 @@ public sealed class ChannelMeter : INotifyPropertyChanged
 
     public bool IsMain { get; }
 
+    private bool _isMuted;
+
+    /// <summary>When true this input channel is silenced in the monitor mix (its meter still moves).</summary>
+    public bool IsMuted
+    {
+        get => _isMuted;
+        set
+        {
+            if (_isMuted != value)
+            {
+                _isMuted = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMuted)));
+            }
+        }
+    }
+
     public float Level
     {
         get => _level;

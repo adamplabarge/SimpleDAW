@@ -36,6 +36,8 @@ public sealed class AudioEngine : IDisposable
     private readonly List<Recording> _recordings = new();
     private readonly Stopwatch _positionClock = new();
 
+    private volatile HashSet<int> _mutedInputChannels = new();
+
     private AsioOut? _asio;
     private WasapiOut? _wasapiOut;
     private WasapiCapture? _wasapiCapture;
@@ -159,6 +161,10 @@ public sealed class AudioEngine : IDisposable
     /// <summary>Most recent peak level (0..1) captured on a hardware input channel.</summary>
     public float GetInputLevel(int channel) =>
         _inputPeaks.TryGetValue(channel, out float v) ? v : 0f;
+
+    /// <summary>Sets which hardware input channels are muted in the monitor mix.</summary>
+    public void SetMutedInputChannels(IEnumerable<int> channels) =>
+        _mutedInputChannels = new HashSet<int>(channels);
 
     /// <summary>
     /// Opens the device for metering (and live monitoring) without recording or
@@ -518,6 +524,7 @@ public sealed class AudioEngine : IDisposable
             _monitorStereo = new float[stereoCount];
         }
 
+        var muted = _mutedInputChannels;
         for (int f = 0; f < samplesPerBuffer; f++)
         {
             float left = 0f;
@@ -532,7 +539,7 @@ public sealed class AudioEngine : IDisposable
                 }
 
                 int ch = track.InputChannel;
-                if (ch >= 0 && ch < channels)
+                if (ch >= 0 && ch < channels && !muted.Contains(ch))
                 {
                     float sample = _interleaved[baseIndex + ch] * track.Volume;
                     double angle = (track.Pan + 1.0) * 0.25 * Math.PI;
