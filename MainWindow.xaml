@@ -268,7 +268,7 @@
 
                 <TextBlock Text="Tempo (BPM)" Margin="24,0,6,0"/>
                 <TextBox Width="60" VerticalContentAlignment="Center"
-                         Text="{Binding Tempo, UpdateSourceTrigger=PropertyChanged, StringFormat=F1}"/>
+                         Text="{Binding Tempo, UpdateSourceTrigger=LostFocus, StringFormat=F1}"/>
 
                 <TextBlock Text="Sample rate" Margin="24,0,6,0"/>
                 <ComboBox Width="90"

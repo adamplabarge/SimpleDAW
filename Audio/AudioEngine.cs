@@ -502,6 +502,16 @@ public sealed class AudioEngine : IDisposable
             return;
         }
 
+        // Do not software-monitor the tracks that are being recorded. Those inputs
+        // are heard through the interface's own (zero-latency) direct monitoring, so
+        // adding a second, buffer-delayed copy here produces an echo. Non-armed
+        // tracks are still played back through the mixer (_player), so the rest of
+        // the song can be monitored while recording.
+        if (Mode == TransportMode.Recording)
+        {
+            return;
+        }
+
         int stereoCount = samplesPerBuffer * 2;
         if (_monitorStereo == null || _monitorStereo.Length < stereoCount)
         {
