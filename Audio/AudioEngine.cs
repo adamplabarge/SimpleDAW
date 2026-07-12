@@ -30,6 +30,11 @@ public sealed class AudioEngine : IDisposable
         public float SliceMin;
         public float SliceMax;
         public int SliceCount;
+
+        // Reused scratch buffer for building a whole callback's worth of
+        // 24-bit PCM bytes so the file is written with one bulk Write call
+        // per callback instead of one WriteSample call per sample.
+        public byte[]? Scratch;
     }
 
     private readonly ConcurrentDictionary<int, float> _inputPeaks = new();
@@ -56,6 +61,13 @@ public sealed class AudioEngine : IDisposable
     private float[]? _chPeak;
     private float[]? _chMin;
     private float[]? _chMax;
+    private float[]? _wasapiDecoded;
+
+    // AddRecording always creates 24-bit PCM mono files; kept as a named
+    // constant so the manual bit-packing below (which replicates NAudio's
+    // WaveFileWriter.WriteSample for 24-bit PCM) is easy to audit against it.
+    private const int RecordingBytesPerSample = 3;
+    private const float Pcm24Scale = 8388608.0f; // 2^23
 
     /// <summary>ASIO driver name to use. Null selects the WASAPI fallback.</summary>
     public string? AsioDriverName { get; set; }
@@ -571,7 +583,9 @@ public sealed class AudioEngine : IDisposable
             _inputPeaks[ch] = _chPeak[ch];
         }
 
-        // Write armed tracks to disk and to their waveform.
+        // Write armed tracks to disk and to their waveform: one bulk Write
+        // per recording per callback instead of one WriteSample call per
+        // sample, which matters once several tracks are armed at once.
         foreach (var rec in _recordings)
         {
             int ch = rec.Channel;
@@ -580,12 +594,7 @@ public sealed class AudioEngine : IDisposable
                 continue;
             }
 
-            for (int f = 0; f < samplesPerBuffer; f++)
-            {
-                float sample = _interleaved[(f * channels) + ch];
-                rec.Writer.WriteSample(sample);
-                AccumulateSlice(rec, sample);
-            }
+            WriteRecordingBlock(rec, _interleaved, ch, channels, samplesPerBuffer);
         }
 
         e.WrittenToOutputBuffers = false;
@@ -600,9 +609,22 @@ public sealed class AudioEngine : IDisposable
         int frames = e.BytesRecorded / frameSize;
         bool isFloat = format.Encoding == WaveFormatEncoding.IeeeFloat;
 
-        var peaks = new float[channels];
-        var mins = new float[channels];
-        var maxs = new float[channels];
+        int needed = frames * channels;
+        if (_wasapiDecoded == null || _wasapiDecoded.Length < needed)
+        {
+            _wasapiDecoded = new float[needed];
+        }
+
+        if (_chPeak == null || _chPeak.Length < channels)
+        {
+            _chPeak = new float[channels];
+            _chMin = new float[channels];
+            _chMax = new float[channels];
+        }
+
+        Array.Clear(_chPeak, 0, channels);
+        Array.Clear(_chMin!, 0, channels);
+        Array.Clear(_chMax!, 0, channels);
 
         for (int f = 0; f < frames; f++)
         {
@@ -613,37 +635,77 @@ public sealed class AudioEngine : IDisposable
                     ? BitConverter.ToSingle(e.Buffer, index)
                     : BitConverter.ToInt16(e.Buffer, index) / 32768f;
 
-                if (sample < mins[ch])
+                _wasapiDecoded[(f * channels) + ch] = sample;
+
+                if (sample < _chMin![ch])
                 {
-                    mins[ch] = sample;
+                    _chMin[ch] = sample;
                 }
 
-                if (sample > maxs[ch])
+                if (sample > _chMax![ch])
                 {
-                    maxs[ch] = sample;
+                    _chMax[ch] = sample;
                 }
 
                 float abs = Math.Abs(sample);
-                if (abs > peaks[ch])
+                if (abs > _chPeak[ch])
                 {
-                    peaks[ch] = abs;
-                }
-
-                foreach (var rec in _recordings)
-                {
-                    if (rec.Channel == ch)
-                    {
-                        rec.Writer.WriteSample(sample);
-                        AccumulateSlice(rec, sample);
-                    }
+                    _chPeak[ch] = abs;
                 }
             }
         }
 
         for (int ch = 0; ch < channels; ch++)
         {
-            _inputPeaks[ch] = peaks[ch];
+            _inputPeaks[ch] = _chPeak[ch];
         }
+
+        // Write armed tracks to disk and to their waveform: one bulk Write
+        // per recording per callback instead of one WriteSample call per
+        // sample per channel-match check.
+        foreach (var rec in _recordings)
+        {
+            int ch = rec.Channel;
+            if (ch < 0 || ch >= channels)
+            {
+                continue;
+            }
+
+            WriteRecordingBlock(rec, _wasapiDecoded, ch, channels, frames);
+        }
+    }
+
+    /// <summary>
+    /// Encodes <paramref name="frameCount"/> samples of channel
+    /// <paramref name="channel"/> from the interleaved <paramref name="interleaved"/>
+    /// buffer as 24-bit PCM (matching the format <see cref="AddRecording"/>
+    /// always creates) into a reused scratch buffer, then writes it to disk
+    /// with a single call. This replicates NAudio's WaveFileWriter 24-bit
+    /// sample encoding exactly (value = sample * 2^23, little-endian, lowest
+    /// 3 bytes) but batches the disk write instead of one call per sample.
+    /// </summary>
+    private static void WriteRecordingBlock(Recording rec, float[] interleaved, int channel, int channelStride, int frameCount)
+    {
+        int neededBytes = frameCount * RecordingBytesPerSample;
+        if (rec.Scratch == null || rec.Scratch.Length < neededBytes)
+        {
+            rec.Scratch = new byte[neededBytes];
+        }
+
+        var scratch = rec.Scratch;
+        for (int f = 0; f < frameCount; f++)
+        {
+            float sample = interleaved[(f * channelStride) + channel];
+            AccumulateSlice(rec, sample);
+
+            int value = (int)(sample * Pcm24Scale);
+            int b = f * RecordingBytesPerSample;
+            scratch[b] = (byte)value;
+            scratch[b + 1] = (byte)(value >> 8);
+            scratch[b + 2] = (byte)(value >> 16);
+        }
+
+        rec.Writer.Write(scratch, 0, neededBytes);
     }
 
     private static void AccumulateSlice(Recording rec, float sample)
