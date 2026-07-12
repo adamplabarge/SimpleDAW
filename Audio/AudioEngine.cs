@@ -42,7 +42,6 @@ public sealed class AudioEngine : IDisposable
     private WasapiOut? _wasapiOut;
     private WasapiCapture? _wasapiCapture;
     private MultiTrackPlayer? _player;
-    private LiveInputProvider? _liveInput;
     private MediaFoundationResampler? _renderResampler;
     private IReadOnlyList<TrackModel>? _tracks;
 
@@ -50,16 +49,12 @@ public sealed class AudioEngine : IDisposable
     private float[]? _chPeak;
     private float[]? _chMin;
     private float[]? _chMax;
-    private float[]? _monitorStereo;
 
     /// <summary>ASIO driver name to use. Null selects the WASAPI fallback.</summary>
     public string? AsioDriverName { get; set; }
 
     /// <summary>Engine sample rate in Hz (used for ASIO and for recorded files).</summary>
     public int SampleRate { get; set; } = 48000;
-
-    /// <summary>When true, armed inputs are routed to the device output to hear.</summary>
-    public bool MonitorEnabled { get; set; } = true;
 
     /// <summary>When true (and an ASIO input is used), output goes to the ASIO device.</summary>
     public bool UseAsioOutput { get; set; } = true;
@@ -212,8 +207,6 @@ public sealed class AudioEngine : IDisposable
             mixer.AddMixerInput(_player);
         }
 
-        _liveInput = new LiveInputProvider(SampleRate, 2, SampleRate); // ~1s capacity
-        mixer.AddMixerInput(_liveInput);
         return mixer;
     }
 
@@ -494,65 +487,7 @@ public sealed class AudioEngine : IDisposable
             }
         }
 
-        WriteMonitorMix(channels, samplesPerBuffer);
-
         e.WrittenToOutputBuffers = false;
-    }
-
-    private void WriteMonitorMix(int channels, int samplesPerBuffer)
-    {
-        var liveInput = _liveInput;
-        var tracks = _tracks;
-        if (!MonitorEnabled || liveInput == null || tracks == null || _interleaved == null)
-        {
-            return;
-        }
-
-        // Do not software-monitor the tracks that are being recorded. Those inputs
-        // are heard through the interface's own (zero-latency) direct monitoring, so
-        // adding a second, buffer-delayed copy here produces an echo. Non-armed
-        // tracks are still played back through the mixer (_player), so the rest of
-        // the song can be monitored while recording.
-        if (Mode == TransportMode.Recording)
-        {
-            return;
-        }
-
-        int stereoCount = samplesPerBuffer * 2;
-        if (_monitorStereo == null || _monitorStereo.Length < stereoCount)
-        {
-            _monitorStereo = new float[stereoCount];
-        }
-
-        var muted = _mutedInputChannels;
-        for (int f = 0; f < samplesPerBuffer; f++)
-        {
-            float left = 0f;
-            float right = 0f;
-            int baseIndex = f * channels;
-            for (int t = 0; t < tracks.Count; t++)
-            {
-                var track = tracks[t];
-                if (!track.IsArmed)
-                {
-                    continue;
-                }
-
-                int ch = track.InputChannel;
-                if (ch >= 0 && ch < channels && !muted.Contains(ch))
-                {
-                    float sample = _interleaved[baseIndex + ch] * track.Volume;
-                    double angle = (track.Pan + 1.0) * 0.25 * Math.PI;
-                    left += sample * (float)Math.Cos(angle);
-                    right += sample * (float)Math.Sin(angle);
-                }
-            }
-
-            _monitorStereo[f * 2] = left;
-            _monitorStereo[(f * 2) + 1] = right;
-        }
-
-        liveInput.Write(_monitorStereo, stereoCount);
     }
 
     private void OnWasapiDataAvailable(object? sender, WaveInEventArgs e)
@@ -685,7 +620,6 @@ public sealed class AudioEngine : IDisposable
 
         _recordings.Clear();
         _inputPeaks.Clear();
-        _liveInput = null;
 
         _player?.Dispose();
         _player = null;

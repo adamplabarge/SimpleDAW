@@ -33,7 +33,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private double _tempo = 120.0;
     private int _trackCounter;
     private string _midiStatusNote = "Idle";
-    private bool _monitorEnabled = true;
     private bool _sendMidiClock = true;
     private string _audioStatus = "Idle";
     private string? _currentProjectPath;
@@ -204,18 +203,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 _engine.SampleRate = value;
                 StartMonitorSafe();
-            }
-        }
-    }
-
-    public bool MonitorEnabled
-    {
-        get => _monitorEnabled;
-        set
-        {
-            if (Set(ref _monitorEnabled, value))
-            {
-                _engine.MonitorEnabled = value;
             }
         }
     }
@@ -563,7 +550,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             SelectedAudioOutput = project.AudioOutput;
         }
         Tempo = project.Tempo;
-        MonitorEnabled = project.MonitorEnabled;
         SendMidiClock = project.SendMidiClock;
 
         foreach (var pt in project.Tracks)
@@ -666,7 +652,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             SampleRate = _sampleRate,
             MidiDevice = _selectedMidiDevice,
             Tempo = _tempo,
-            MonitorEnabled = _monitorEnabled,
             SendMidiClock = _sendMidiClock,
             Tracks = Tracks.Select(t => new ProjectTrack
             {

@@ -340,10 +340,6 @@
                               ItemsSource="{Binding MidiDevices}"
                               SelectedItem="{Binding SelectedMidiDevice}"/>
 
-                    <CheckBox Content="Monitor input" Foreground="#EEEEEE" VerticalAlignment="Center"
-                              Margin="0,0,24,0" IsChecked="{Binding MonitorEnabled}"
-                              ToolTip="Route armed inputs to the device output so you can hear them"/>
-
                     <Button Content="ASIO Panel" Padding="8,2" Margin="0,0,8,0"
                             Command="{Binding ShowAsioPanelCommand}"/>
                     <Button Content="Refresh" Padding="8,2"
