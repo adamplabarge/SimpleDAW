@@ -56,6 +56,9 @@ public sealed class MultiTrackPlayer : ISampleProvider, IDisposable
 
     public WaveFormat WaveFormat => _waveFormat;
 
+    /// <summary>True when at least one track has audio to play.</summary>
+    public bool HasSources => _sources.Count > 0;
+
     /// <summary>True once every source has played to its end.</summary>
     public bool IsFinished => _sources.Count == 0 || _sources.All(s => s.Ended);
 

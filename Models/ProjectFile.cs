@@ -11,6 +11,9 @@ public sealed class ProjectFile
     public double Tempo { get; set; } = 120.0;
     public bool SendMidiClock { get; set; } = true;
     public int PreRollBeats { get; set; } = 1;
+    public bool ClickEnabled { get; set; }
+    public ClickAccent ClickAccent { get; set; } = ClickAccent.Beat1;
+    public double ClickVolume { get; set; } = 0.5;
     public List<ProjectTrack> Tracks { get; set; } = new();
 }
 

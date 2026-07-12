@@ -317,6 +317,18 @@
                           SelectedItem="{Binding PreRollBeats}"
                           ToolTip="Beats to record before the MIDI clock starts, so the first beat is fully captured"/>
 
+                <CheckBox Content="Click" Foreground="#EEEEEE" VerticalAlignment="Center"
+                          Margin="24,0,0,0" IsChecked="{Binding ClickEnabled}"
+                          ToolTip="Play a metronome click on every beat during record and playback"/>
+                <ComboBox Width="110" Margin="6,0,0,0" VerticalContentAlignment="Center"
+                          ItemsSource="{Binding ClickAccentOptions}"
+                          DisplayMemberPath="Label" SelectedValuePath="Value"
+                          SelectedValue="{Binding ClickAccent}"
+                          ToolTip="Which beats of the bar are accented (louder)"/>
+                <Slider Width="90" Margin="6,0,0,0" VerticalAlignment="Center"
+                        Minimum="0" Maximum="1" Value="{Binding ClickVolume}"
+                        ToolTip="Click volume"/>
+
                 <TextBlock Text="Sample rate" Margin="24,0,6,0"/>
                 <ComboBox Width="90"
                           ItemsSource="{Binding SampleRateOptions}"

@@ -36,6 +36,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _sendMidiClock = true;
     private int _preRollBeats = 1;
     private DispatcherTimer? _preRollTimer;
+    private bool _clickEnabled;
+    private ClickAccent _clickAccent = ClickAccent.Beat1;
+    private double _clickVolume = 0.5;
     private string _audioStatus = "Idle";
     private string? _currentProjectPath;
     private string _recordDirectory = Path.Combine(
@@ -90,6 +93,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ObservableCollection<ChannelMeter> MasterInputMeters { get; } = new();
     public int[] SampleRateOptions { get; } = { 44100, 48000, 88200, 96000 };
     public int[] PreRollBeatsOptions { get; } = { 1, 2, 3, 4 };
+
+    public IReadOnlyList<ClickAccentOption> ClickAccentOptions { get; } = new[]
+    {
+        new ClickAccentOption("None", ClickAccent.None),
+        new ClickAccentOption("Beat 1", ClickAccent.Beat1),
+        new ClickAccentOption("Beats 1 & 3", ClickAccent.Beats1And3),
+        new ClickAccentOption("Beats 2 & 4", ClickAccent.Beats2And4),
+    };
 
     public RelayCommand AddTrackCommand { get; }
     public RelayCommand<TrackModel> RemoveTrackCommand { get; }
@@ -239,6 +250,45 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         set => Set(ref _preRollBeats, Math.Clamp(value, 1, 4));
     }
 
+    /// <summary>When true, a metronome click plays during record and playback.</summary>
+    public bool ClickEnabled
+    {
+        get => _clickEnabled;
+        set
+        {
+            if (Set(ref _clickEnabled, value))
+            {
+                _engine.ClickEnabled = value;
+            }
+        }
+    }
+
+    /// <summary>Which beats of the bar the click accents.</summary>
+    public ClickAccent ClickAccent
+    {
+        get => _clickAccent;
+        set
+        {
+            if (Set(ref _clickAccent, value))
+            {
+                _engine.ClickAccent = value;
+            }
+        }
+    }
+
+    /// <summary>Click level (0..1).</summary>
+    public double ClickVolume
+    {
+        get => _clickVolume;
+        set
+        {
+            if (Set(ref _clickVolume, Math.Clamp(value, 0.0, 1.0)))
+            {
+                _engine.ClickVolume = (float)_clickVolume;
+            }
+        }
+    }
+
     public string AudioStatus
     {
         get => _audioStatus;
@@ -280,6 +330,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             if (Set(ref _tempo, clamped))
             {
                 _midiClock.Bpm = clamped;
+                _engine.ClickBpm = clamped;
                 OnPropertyChanged(nameof(MidiClockStatus));
             }
         }
@@ -565,6 +616,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         Tempo = project.Tempo;
         SendMidiClock = project.SendMidiClock;
         PreRollBeats = project.PreRollBeats;
+        ClickEnabled = project.ClickEnabled;
+        ClickAccent = project.ClickAccent;
+        ClickVolume = project.ClickVolume;
 
         foreach (var pt in project.Tracks)
         {
@@ -668,6 +722,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             Tempo = _tempo,
             SendMidiClock = _sendMidiClock,
             PreRollBeats = _preRollBeats,
+            ClickEnabled = _clickEnabled,
+            ClickAccent = _clickAccent,
+            ClickVolume = _clickVolume,
             Tracks = Tracks.Select(t => new ProjectTrack
             {
                 Name = t.Name,
@@ -747,7 +804,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void Play()
     {
-        if (HasPlayableAudio)
+        _engine.ClickBpm = _tempo;
+        if (HasPlayableAudio || ClickEnabled)
         {
             _engine.StartPlayback(Tracks.ToList());
             _midiStatusNote = "Running";
@@ -771,10 +829,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
-            _engine.StartRecording(Tracks.ToList(), recordDirectory);
+            _engine.ClickBpm = _tempo;
+            int preRoll = ShouldPreRollBeforeClock() ? PreRollBeats : 0;
+            _engine.StartRecording(Tracks.ToList(), recordDirectory, preRoll);
             _midiStatusNote = "Running";
 
-            if (ShouldPreRollBeforeClock())
+            if (preRoll > 0)
             {
                 // Keep recording for a few beats before the synth is told to
                 // start, so its first beat is captured in full rather than clipped.

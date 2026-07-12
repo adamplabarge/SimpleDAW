@@ -38,6 +38,13 @@ public sealed class AudioEngine : IDisposable
 
     private volatile HashSet<int> _mutedInputChannels = new();
 
+    private Metronome? _metronome;
+    private bool _clickEnabled;
+    private ClickAccent _clickAccent = ClickAccent.Beat1;
+    private double _clickBpm = 120.0;
+    private float _clickVolume = 0.5f;
+    private bool _clickActive; // true only while a Play/Record stream should click
+
     private AsioOut? _asio;
     private WasapiOut? _wasapiOut;
     private WasapiCapture? _wasapiCapture;
@@ -61,6 +68,62 @@ public sealed class AudioEngine : IDisposable
 
     /// <summary>WASAPI render device id to output to (null = system default).</summary>
     public string? OutputDeviceId { get; set; }
+
+    /// <summary>When true, a metronome click is mixed into the output during play/record.</summary>
+    public bool ClickEnabled
+    {
+        get => _clickEnabled;
+        set
+        {
+            _clickEnabled = value;
+            if (_metronome != null)
+            {
+                _metronome.Enabled = value && _clickActive;
+            }
+        }
+    }
+
+    /// <summary>Which beats of the bar are accented in the click.</summary>
+    public ClickAccent ClickAccent
+    {
+        get => _clickAccent;
+        set
+        {
+            _clickAccent = value;
+            if (_metronome != null)
+            {
+                _metronome.Accent = value;
+            }
+        }
+    }
+
+    /// <summary>Click tempo in BPM (kept in sync with the transport tempo).</summary>
+    public double ClickBpm
+    {
+        get => _clickBpm;
+        set
+        {
+            _clickBpm = value;
+            if (_metronome != null)
+            {
+                _metronome.Bpm = value;
+            }
+        }
+    }
+
+    /// <summary>Overall click level (0..1).</summary>
+    public float ClickVolume
+    {
+        get => _clickVolume;
+        set
+        {
+            _clickVolume = value;
+            if (_metronome != null)
+            {
+                _metronome.Volume = value;
+            }
+        }
+    }
 
     public TransportMode Mode { get; private set; } = TransportMode.Stopped;
 
@@ -207,7 +270,41 @@ public sealed class AudioEngine : IDisposable
             mixer.AddMixerInput(_player);
         }
 
+        if (_metronome != null)
+        {
+            mixer.AddMixerInput(_metronome);
+        }
+
         return mixer;
+    }
+
+    /// <summary>
+    /// Creates (or reuses) the metronome for a play/record run and aligns it so
+    /// the first <paramref name="preRollBeats"/> beats are the quieter count-in.
+    /// </summary>
+    private void PrepareClick(int preRollBeats)
+    {
+        if (_metronome == null || _metronome.WaveFormat.SampleRate != SampleRate)
+        {
+            _metronome = new Metronome(SampleRate);
+        }
+
+        _metronome.Bpm = _clickBpm;
+        _metronome.Accent = _clickAccent;
+        _metronome.Volume = _clickVolume;
+        _metronome.Restart(preRollBeats);
+        _clickActive = true;
+        _metronome.Enabled = _clickEnabled;
+    }
+
+    /// <summary>Silences the click when leaving a play/record run.</summary>
+    private void DeactivateClick()
+    {
+        _clickActive = false;
+        if (_metronome != null)
+        {
+            _metronome.Enabled = false;
+        }
     }
 
     private void StartAsioStream(bool subscribeStopped)
@@ -292,6 +389,7 @@ public sealed class AudioEngine : IDisposable
         _tracks = tracks;
         LastError = null;
         _player = new MultiTrackPlayer(SampleRate, tracks);
+        PrepareClick(0);
 
         try
         {
@@ -301,7 +399,7 @@ public sealed class AudioEngine : IDisposable
             }
             else
             {
-                StartWasapiRender(_player, subscribeStopped: true);
+                StartWasapiRender(BuildMixer(), subscribeStopped: true);
             }
 
             Mode = TransportMode.Playing;
@@ -318,7 +416,7 @@ public sealed class AudioEngine : IDisposable
     /// Starts recording: armed tracks capture their assigned input channel while
     /// any other tracks with audio are played back for monitoring/overdubbing.
     /// </summary>
-    public void StartRecording(IReadOnlyList<TrackModel> tracks, string recordDirectory)
+    public void StartRecording(IReadOnlyList<TrackModel> tracks, string recordDirectory, int preRollBeats = 0)
     {
         Stop();
         _tracks = tracks;
@@ -328,6 +426,7 @@ public sealed class AudioEngine : IDisposable
         var armed = tracks.Where(t => t.IsArmed).ToList();
         var playback = tracks.Where(t => !t.IsArmed && t.HasAudio).ToList();
         _player = new MultiTrackPlayer(SampleRate, playback);
+        PrepareClick(preRollBeats);
 
         try
         {
@@ -390,11 +489,13 @@ public sealed class AudioEngine : IDisposable
         capture.StartRecording();
         _wasapiCapture = capture;
 
-        if (_player != null)
+        // Render playback tracks and/or the click out to the device. When there is
+        // nothing to play and the click is off, skip opening an output stream.
+        if (_player != null || (_clickEnabled && _clickActive))
         {
             try
             {
-                StartWasapiRender(_player, subscribeStopped: false);
+                StartWasapiRender(BuildMixer(), subscribeStopped: false);
             }
             catch
             {
@@ -579,11 +680,16 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
-    /// <summary>True once the playback mix has reached the end of every track.</summary>
-    public bool IsPlaybackFinished => _player?.IsFinished ?? true;
+    /// <summary>
+    /// True once the playback mix has reached the end of every track. A click-only
+    /// run (no audio sources) never reports finished, so it plays until stopped.
+    /// </summary>
+    public bool IsPlaybackFinished => _player != null && _player.HasSources && _player.IsFinished;
 
     public void Stop()
     {
+        DeactivateClick();
+
         if (_asio != null)
         {
             _asio.AudioAvailable -= OnAsioAudioAvailable;

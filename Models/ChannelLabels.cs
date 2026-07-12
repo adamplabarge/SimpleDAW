@@ -3,6 +3,9 @@ namespace SimpleDAW;
 /// <summary>An input channel choice for a track, with a friendly label.</summary>
 public sealed record ChannelOption(int Index, string Label, bool IsMain);
 
+/// <summary>A click accent-pattern choice, with a friendly label.</summary>
+public sealed record ClickAccentOption(string Label, ClickAccent Value);
+
 /// <summary>
 /// Produces friendly names for hardware input channels. A 12-channel device is
 /// treated as a TASCAM Model 12: channels 1-10 are inputs and 11-12 are the
