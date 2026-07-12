@@ -31,6 +31,10 @@ public sealed class AudioEngine : IDisposable
         public float SliceMax;
         public int SliceCount;
 
+        // Post-gain peak (0..1) of the most recent callback, for the per-track
+        // record meter so it reflects the track's input/record volume.
+        public float Peak;
+
         // Reused scratch buffer for building a whole callback's worth of
         // 24-bit PCM bytes so the file is written with one bulk Write call
         // per callback instead of one WriteSample call per sample.
@@ -42,6 +46,7 @@ public sealed class AudioEngine : IDisposable
     private readonly Stopwatch _positionClock = new();
 
     private volatile HashSet<int> _mutedInputChannels = new();
+    private volatile float[] _inputGains = Array.Empty<float>();
 
     private Metronome? _metronome;
     private bool _clickEnabled;
@@ -211,6 +216,60 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
+    /// <summary>
+    /// Best-effort detection of the input device's sample rate, or 0 when it
+    /// can't be determined. For WASAPI this is the device's actual mix-format
+    /// rate. For ASIO, NAudio doesn't expose the driver's current rate, so we
+    /// confirm the configured rate is supported (falling back to the first
+    /// supported candidate rate); probing is skipped while a stream is active,
+    /// since opening a second handle on the same ASIO driver fails with
+    /// ASE_NotPresent.
+    /// </summary>
+    public int GetDeviceSampleRate(IReadOnlyList<int> candidateRates)
+    {
+        if (!string.IsNullOrEmpty(AsioDriverName))
+        {
+            if (IsActive)
+            {
+                return 0;
+            }
+
+            try
+            {
+                using var probe = new AsioOut(AsioDriverName);
+                if (probe.IsSampleRateSupported(SampleRate))
+                {
+                    return SampleRate;
+                }
+
+                foreach (int rate in candidateRates)
+                {
+                    if (probe.IsSampleRateSupported(rate))
+                    {
+                        return rate;
+                    }
+                }
+            }
+            catch
+            {
+                // Fall through to "unknown".
+            }
+
+            return 0;
+        }
+
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
+            return device.AudioClient.MixFormat.SampleRate;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
     /// <summary>Opens the ASIO driver's own control panel, if one is selected.</summary>
     public void ShowAsioControlPanel()
     {
@@ -232,9 +291,44 @@ public sealed class AudioEngine : IDisposable
     public float GetInputLevel(int channel) =>
         _inputPeaks.TryGetValue(channel, out float v) ? v : 0f;
 
+    /// <summary>
+    /// Most recent post-gain peak (0..1) for an armed track that is currently
+    /// recording, i.e. after its <see cref="TrackModel.Volume"/> record gain has
+    /// been applied. Returns null when the track is not recording, so callers
+    /// can fall back to the raw input-channel level (e.g. while monitoring).
+    /// </summary>
+    public float? GetRecordingPeak(TrackModel track)
+    {
+        foreach (var rec in _recordings)
+        {
+            if (rec.Track == track)
+            {
+                return rec.Peak;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Sets which hardware input channels are muted in the monitor mix.</summary>
     public void SetMutedInputChannels(IEnumerable<int> channels) =>
         _mutedInputChannels = new HashSet<int>(channels);
+
+    /// <summary>
+    /// Sets the per-hardware-input-channel software gain (indexed by channel).
+    /// Applied to the captured signal, so it scales each channel's meter and
+    /// anything recorded from it. Channels beyond the array length use unity.
+    /// </summary>
+    public void SetInputChannelGains(IReadOnlyList<float> gains)
+    {
+        var arr = new float[gains.Count];
+        for (int i = 0; i < gains.Count; i++)
+        {
+            arr[i] = gains[i];
+        }
+
+        _inputGains = arr;
+    }
 
     /// <summary>
     /// Opens the device for metering (and live monitoring) without recording or
@@ -492,8 +586,12 @@ public sealed class AudioEngine : IDisposable
 
         foreach (var track in armed)
         {
-            int channel = Math.Clamp(track.InputChannel, 0, inputChannels - 1);
-            AddRecording(track, channel, recordDirectory, captureRate);
+            if (track.InputChannel < 0 || track.InputChannel >= inputChannels)
+            {
+                continue;
+            }
+
+            AddRecording(track, track.InputChannel, recordDirectory, captureRate);
         }
 
         capture.DataAvailable += OnWasapiDataAvailable;
@@ -554,12 +652,21 @@ public sealed class AudioEngine : IDisposable
         Array.Clear(_chMin!, 0, channels);
         Array.Clear(_chMax!, 0, channels);
 
+        var gains = _inputGains;
         for (int f = 0; f < samplesPerBuffer; f++)
         {
             int baseIndex = f * channels;
             for (int ch = 0; ch < channels; ch++)
             {
                 float sample = _interleaved[baseIndex + ch];
+                if (ch < gains.Length)
+                {
+                    // Apply the per-channel input gain in-place so both the
+                    // meters below and the recorded samples reflect it.
+                    sample *= gains[ch];
+                    _interleaved[baseIndex + ch] = sample;
+                }
+
                 if (sample < _chMin![ch])
                 {
                     _chMin[ch] = sample;
@@ -626,6 +733,7 @@ public sealed class AudioEngine : IDisposable
         Array.Clear(_chMin!, 0, channels);
         Array.Clear(_chMax!, 0, channels);
 
+        var gains = _inputGains;
         for (int f = 0; f < frames; f++)
         {
             for (int ch = 0; ch < channels; ch++)
@@ -634,6 +742,11 @@ public sealed class AudioEngine : IDisposable
                 float sample = isFloat
                     ? BitConverter.ToSingle(e.Buffer, index)
                     : BitConverter.ToInt16(e.Buffer, index) / 32768f;
+
+                if (ch < gains.Length)
+                {
+                    sample *= gains[ch];
+                }
 
                 _wasapiDecoded[(f * channels) + ch] = sample;
 
@@ -683,6 +796,9 @@ public sealed class AudioEngine : IDisposable
     /// with a single call. This replicates NAudio's WaveFileWriter 24-bit
     /// sample encoding exactly (value = sample * 2^23, little-endian, lowest
     /// 3 bytes) but batches the disk write instead of one call per sample.
+    /// The track's <see cref="TrackModel.Volume"/> is applied as an input/record
+    /// gain, so it scales what is written to disk, the drawn waveform and the
+    /// per-track record meter.
     /// </summary>
     private static void WriteRecordingBlock(Recording rec, float[] interleaved, int channel, int channelStride, int frameCount)
     {
@@ -692,11 +808,19 @@ public sealed class AudioEngine : IDisposable
             rec.Scratch = new byte[neededBytes];
         }
 
+        float gain = rec.Track.Volume;
+        float peak = 0f;
         var scratch = rec.Scratch;
         for (int f = 0; f < frameCount; f++)
         {
-            float sample = interleaved[(f * channelStride) + channel];
+            float sample = interleaved[(f * channelStride) + channel] * gain;
             AccumulateSlice(rec, sample);
+
+            float abs = Math.Abs(sample);
+            if (abs > peak)
+            {
+                peak = abs;
+            }
 
             int value = (int)(sample * Pcm24Scale);
             int b = f * RecordingBytesPerSample;
@@ -705,6 +829,7 @@ public sealed class AudioEngine : IDisposable
             scratch[b + 2] = (byte)(value >> 16);
         }
 
+        rec.Peak = peak;
         rec.Writer.Write(scratch, 0, neededBytes);
     }
 

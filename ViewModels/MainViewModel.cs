@@ -71,10 +71,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         _suppressMonitor = true;
         LoadDevices();
+        DetectAndApplySampleRate();
 
-        // Start with a couple of tracks so the UI is not empty.
-        AddTrack();
-        AddTrack();
+        // Start with a couple of tracks so the UI is not empty. These default
+        // to the first two hardware inputs; tracks added later start unassigned.
+        AddTrack(0);
+        AddTrack(1);
 
         _engine.PlaybackFinished += OnEnginePlaybackFinished;
 
@@ -90,6 +92,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         _suppressMonitor = false;
         StartMonitorSafe();
+
+        // The per-track "In" ComboBox binds its channel list via a RelativeSource
+        // to the window, which can resolve after the SelectedValue binding on
+        // startup and leave the selector blank even though InputChannel is set.
+        // Re-assert the selection once the UI has finished loading.
+        Dispatcher.CurrentDispatcher.BeginInvoke(
+            new Action(() =>
+            {
+                foreach (var track in Tracks)
+                {
+                    track.RaiseInputChannelChanged();
+                }
+            }),
+            DispatcherPriority.Loaded);
     }
 
     private void OnRendering(object? sender, EventArgs e)
@@ -186,6 +202,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 _engine.AsioDriverName = value == WasapiLabel ? null : value;
                 RefreshOutputs();
                 ApplyOutputSelection();
+                _engine.Stop();              // release any open device so ASIO probing below is safe
+                DetectAndApplySampleRate();  // match the newly selected device's rate
                 _suppressMonitor = previous;
                 StartMonitorSafe();      // opens the device so the channel count is known
                 RefreshInputChannels();  // now reflects the newly selected device
@@ -445,6 +463,37 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             AvailableInputChannels.Add(new ChannelOption(i, ChannelLabels.Label(i, count), ChannelLabels.IsMain(i, count)));
         }
+
+        // Rebuilding the list resets each track's "In" ComboBox selection, so
+        // re-assert the (unchanged) InputChannel to make the selector show it.
+        foreach (var track in Tracks)
+        {
+            track.RaiseInputChannelChanged();
+        }
+    }
+
+    /// <summary>
+    /// Queries the selected input device's sample rate and, if it maps to one
+    /// of the offered options, applies it. Callers already run this inside a
+    /// monitor-suppressed region, so it sets the fields directly rather than
+    /// going through the <see cref="SampleRate"/> setter (which would restart
+    /// the monitor a second time).
+    /// </summary>
+    private void DetectAndApplySampleRate()
+    {
+        int detected = _engine.GetDeviceSampleRate(SampleRateOptions);
+        if (detected <= 0)
+        {
+            return;
+        }
+
+        int nearest = SampleRateOptions.OrderBy(r => Math.Abs(r - detected)).First();
+        if (nearest != _sampleRate)
+        {
+            _sampleRate = nearest;
+            _engine.SampleRate = nearest;
+            OnPropertyChanged(nameof(SampleRate));
+        }
     }
 
     private void StartMonitorSafe()
@@ -485,6 +534,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         PushMutedInputChannels();
+        PushInputChannelGains();
     }
 
     private void OnInputMeterPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -493,18 +543,47 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             PushMutedInputChannels();
         }
+        else if (e.PropertyName == nameof(ChannelMeter.Gain))
+        {
+            PushInputChannelGains();
+        }
     }
 
     private void PushMutedInputChannels() =>
         _engine.SetMutedInputChannels(MasterInputMeters.Where(m => m.IsMuted).Select(m => m.Index));
 
-    private void AddTrack()
+    private void PushInputChannelGains()
+    {
+        int count = MasterInputMeters.Count;
+        var gains = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            gains[i] = 1f;
+        }
+
+        foreach (var meter in MasterInputMeters)
+        {
+            if (meter.Index >= 0 && meter.Index < count)
+            {
+                gains[meter.Index] = meter.Gain;
+            }
+        }
+
+        _engine.SetInputChannelGains(gains);
+    }
+
+    // Parameterless overload backs the "Add track" command: new tracks start
+    // with no input assigned (-1) so they don't auto-grab a channel or show a
+    // meter until the user picks one.
+    private void AddTrack() => AddTrack(-1);
+
+    private void AddTrack(int inputChannel)
     {
         _trackCounter++;
         var track = new TrackModel
         {
             Name = $"Track {_trackCounter}",
-            InputChannel = Math.Min(_trackCounter - 1, Math.Max(AvailableInputChannels.Count - 1, 0)),
+            InputChannel = inputChannel,
         };
         track.PropertyChanged += OnTrackPropertyChanged;
         Tracks.Add(track);
@@ -572,8 +651,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _trackCounter = 0;
         _currentProjectPath = null;
         UpdateRecordDirectory();
-        AddTrack();
-        AddTrack();
+        AddTrack(0);
+        AddTrack(1);
     }
 
     private void OpenProject()
@@ -992,7 +1071,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         // Master input meters run whenever a device is open (monitor/record).
         foreach (var meter in MasterInputMeters)
         {
-            meter.Level = _engine.GetInputLevel(meter.Index);
+            meter.Level = ToMeterScale(_engine.GetInputLevel(meter.Index));
         }
 
         if (Mode == TransportMode.Playing && _engine.IsPlaybackFinished)
@@ -1005,19 +1084,44 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         bool inputActive = _engine.IsActive && Mode != TransportMode.Playing;
         foreach (var track in Tracks)
         {
-            if (inputActive && track.IsArmed)
+            if (inputActive && track.IsArmed && track.InputChannel >= 0)
             {
-                track.Level = _engine.GetInputLevel(track.InputChannel);
+                // While recording, use the post-gain peak so the meter reflects
+                // the track's record volume. While only monitoring (not yet
+                // recording) there is no recording, so scale the raw input
+                // level by the track volume for the same feedback.
+                float? recPeak = _engine.GetRecordingPeak(track);
+                float level = recPeak ?? (_engine.GetInputLevel(track.InputChannel) * track.Volume);
+                track.Level = ToMeterScale(level);
             }
             else if (Mode == TransportMode.Playing && player != null && track.HasAudio)
             {
-                track.Level = player.GetPeak(track);
+                track.Level = ToMeterScale(player.GetPeak(track));
             }
             else
             {
                 track.Level = 0f;
             }
         }
+    }
+
+    /// <summary>
+    /// Maps a linear peak amplitude (0..1) to a perceptual meter deflection
+    /// (0..1) on a decibel scale, so ordinary signals produce a usefully tall
+    /// bar instead of a barely-visible sliver. -60 dBFS reads as empty and
+    /// 0 dBFS as full. This only affects the on-screen meter, not the audio.
+    /// </summary>
+    private static float ToMeterScale(float linearPeak)
+    {
+        if (linearPeak <= 0f)
+        {
+            return 0f;
+        }
+
+        const double minDb = -60.0;
+        double db = 20.0 * Math.Log10(linearPeak);
+        double norm = (db - minDb) / -minDb;
+        return (float)Math.Clamp(norm, 0.0, 1.0);
     }
 
     private void RefreshTransport()

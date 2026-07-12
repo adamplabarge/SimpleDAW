@@ -35,6 +35,15 @@ public class TrackModel : INotifyPropertyChanged
         set => Set(ref _inputChannel, value);
     }
 
+    /// <summary>
+    /// Forces the <see cref="InputChannel"/> binding to re-evaluate without
+    /// changing its value. The per-track "In" ComboBox resolves its ItemsSource
+    /// (the list of available channels) via a RelativeSource to the window,
+    /// which can bind after the SelectedValue on startup and leave the selector
+    /// blank. Re-raising the change once the list is ready makes it re-select.
+    /// </summary>
+    public void RaiseInputChannelChanged() => OnPropertyChanged(nameof(InputChannel));
+
     /// <summary>When true the track will capture audio while recording.</summary>
     public bool IsArmed
     {

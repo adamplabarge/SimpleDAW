@@ -12,6 +12,14 @@ namespace SimpleDAW;
 /// </summary>
 public sealed class WaveformView : FrameworkElement
 {
+    /// <summary>
+    /// Display-only vertical magnification applied before the perceptual curve
+    /// in <c>OnRender</c> so quieter takes still fill a useful portion of the
+    /// track height. The result is clamped when drawing so it never overflows
+    /// the view.
+    /// </summary>
+    private const float WaveformVerticalGain = 4.0f;
+
     private static readonly Brush BackgroundBrush = CreateFrozen("#1A1A1A");
     private static readonly Brush CentreBrush = CreateFrozen("#3A3A3A");
     private static readonly Brush WaveBrush = CreateFrozen("#4EC94E");
@@ -143,18 +151,31 @@ public sealed class WaveformView : FrameworkElement
             buffer.FillEnvelopePixels(offset, pps, _envMin, _envMax, pixels);
             double halfHeight = centre;
 
+            // Display-only vertical scaling so quieter recordings still fill a
+            // useful portion of the track height. A pre-gain is applied and
+            // then a perceptual (square-root) curve emphasises low-level detail
+            // so the shape is clearly visible; the sign is preserved and the
+            // result is clamped so a loud signal can't draw outside the view.
+            double Y(float v)
+            {
+                float m = Math.Clamp(Math.Abs(v) * WaveformVerticalGain, 0f, 1f);
+                m = MathF.Sqrt(m);
+                float signed = v < 0f ? -m : m;
+                return centre - (signed * halfHeight);
+            }
+
             var geometry = new StreamGeometry();
             using (var ctx = geometry.Open())
             {
-                ctx.BeginFigure(new Point(0, centre - (_envMax[0] * halfHeight)), true, true);
+                ctx.BeginFigure(new Point(0, Y(_envMax[0])), true, true);
                 for (int x = 1; x < pixels; x++)
                 {
-                    ctx.LineTo(new Point(x, centre - (_envMax[x] * halfHeight)), true, false);
+                    ctx.LineTo(new Point(x, Y(_envMax[x])), true, false);
                 }
 
                 for (int x = pixels - 1; x >= 0; x--)
                 {
-                    ctx.LineTo(new Point(x, centre - (_envMin[x] * halfHeight)), true, false);
+                    ctx.LineTo(new Point(x, Y(_envMin[x])), true, false);
                 }
             }
 

@@ -26,4 +26,13 @@ public partial class MainWindow : Window
     }
 
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>Double-clicking an input channel's gain slider resets it to 50%.</summary>
+    private void OnInputGainDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ChannelMeter meter })
+        {
+            meter.Gain = 0.5f;
+        }
+    }
 }

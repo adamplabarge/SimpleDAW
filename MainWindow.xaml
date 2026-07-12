@@ -364,6 +364,11 @@
                             Command="{Binding RefreshDevicesCommand}"/>
                 </StackPanel>
 
+                <TextBlock Text="{Binding AudioStatus}" Margin="0,8,0,0"
+                           Foreground="#9CDCFE"/>
+                <TextBlock Text="{Binding MidiClockStatus}" Margin="0,4,0,0"
+                           Foreground="#C586C0"/>
+
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                     <TextBlock Text="Inputs" Margin="0,0,10,0" Foreground="#AAAAAA"/>
                     <ItemsControl ItemsSource="{Binding MasterInputMeters}">
@@ -385,9 +390,15 @@
                                             </Style.Triggers>
                                         </Style>
                                     </StackPanel.Style>
-                                    <ProgressBar Width="14" Height="46" Orientation="Vertical"
-                                                 Minimum="0" Maximum="1" Value="{Binding Level, Mode=OneWay}"
-                                                 Foreground="#4EC94E" Background="#1A1A1A"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <local:LevelMeterView Width="14" Height="46" Orientation="Vertical"
+                                                              Level="{Binding Level, Mode=OneWay}"/>
+                                        <Slider Orientation="Vertical" Height="46" Width="20"
+                                                Margin="5,0,0,0" Minimum="0" Maximum="1"
+                                                Value="{Binding Gain}"
+                                                MouseDoubleClick="OnInputGainDoubleClick"
+                                                ToolTip="Input channel record level (scales this channel's meter and anything recorded from it). Double-click to reset to 50%."/>
+                                    </StackPanel>
                                     <TextBlock Text="{Binding Label}" FontSize="10"
                                                HorizontalAlignment="Center" Foreground="#AAAAAA"/>
                                     <ToggleButton Content="M" Width="22" Height="20" Margin="0,3,0,0"
@@ -399,10 +410,6 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock Text="{Binding AudioStatus}" Margin="16,0,0,0"
-                               VerticalAlignment="Center" Foreground="#9CDCFE"/>
-                    <TextBlock Text="{Binding MidiClockStatus}" Margin="16,0,0,0"
-                               VerticalAlignment="Center" Foreground="#C586C0"/>
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -492,10 +499,9 @@
                                             ToolTip="Left / Right pan (centre = 0)"/>
                                 </StackPanel>
 
-                                <ProgressBar Grid.Column="6" Height="16" Minimum="0" Maximum="1"
-                                             Value="{Binding Level, Mode=OneWay}"
-                                             Foreground="#4EC94E" Background="#1A1A1A"
-                                             VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <local:LevelMeterView Grid.Column="6" Height="16" Orientation="Horizontal"
+                                                      Level="{Binding Level, Mode=OneWay}"
+                                                      VerticalAlignment="Center" Margin="0,0,10,0"/>
 
                                 <StackPanel Grid.Column="7" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding DurationText}" FontSize="11"
