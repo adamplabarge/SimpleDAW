@@ -10,6 +10,7 @@ public sealed class ProjectFile
     public string? MidiDevice { get; set; }
     public double Tempo { get; set; } = 120.0;
     public bool SendMidiClock { get; set; } = true;
+    public int PreRollBeats { get; set; } = 1;
     public List<ProjectTrack> Tracks { get; set; } = new();
 }
 

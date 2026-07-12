@@ -311,6 +311,12 @@
                           Margin="16,0,0,0" IsChecked="{Binding SendMidiClock}"
                           ToolTip="When unchecked, Play/Record run without sending a MIDI clock"/>
 
+                <TextBlock Text="Rec pre-roll" Margin="24,0,6,0" VerticalAlignment="Center"/>
+                <ComboBox Width="70" VerticalContentAlignment="Center"
+                          ItemsSource="{Binding PreRollBeatsOptions}"
+                          SelectedItem="{Binding PreRollBeats}"
+                          ToolTip="Beats to record before the MIDI clock starts, so the first beat is fully captured"/>
+
                 <TextBlock Text="Sample rate" Margin="24,0,6,0"/>
                 <ComboBox Width="90"
                           ItemsSource="{Binding SampleRateOptions}"

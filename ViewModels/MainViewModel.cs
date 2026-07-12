@@ -34,6 +34,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _trackCounter;
     private string _midiStatusNote = "Idle";
     private bool _sendMidiClock = true;
+    private int _preRollBeats = 1;
+    private DispatcherTimer? _preRollTimer;
     private string _audioStatus = "Idle";
     private string? _currentProjectPath;
     private string _recordDirectory = Path.Combine(
@@ -87,6 +89,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ObservableCollection<ChannelOption> AvailableInputChannels { get; } = new();
     public ObservableCollection<ChannelMeter> MasterInputMeters { get; } = new();
     public int[] SampleRateOptions { get; } = { 44100, 48000, 88200, 96000 };
+    public int[] PreRollBeatsOptions { get; } = { 1, 2, 3, 4 };
 
     public RelayCommand AddTrackCommand { get; }
     public RelayCommand<TrackModel> RemoveTrackCommand { get; }
@@ -224,6 +227,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(MidiClockStatus));
             }
         }
+    }
+
+    /// <summary>
+    /// Number of beats (1-4) to keep recording before the MIDI clock is started,
+    /// so the synth's first beat is fully captured instead of clipped.
+    /// </summary>
+    public int PreRollBeats
+    {
+        get => _preRollBeats;
+        set => Set(ref _preRollBeats, Math.Clamp(value, 1, 4));
     }
 
     public string AudioStatus
@@ -551,6 +564,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         Tempo = project.Tempo;
         SendMidiClock = project.SendMidiClock;
+        PreRollBeats = project.PreRollBeats;
 
         foreach (var pt in project.Tracks)
         {
@@ -653,6 +667,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             MidiDevice = _selectedMidiDevice,
             Tempo = _tempo,
             SendMidiClock = _sendMidiClock,
+            PreRollBeats = _preRollBeats,
             Tracks = Tracks.Select(t => new ProjectTrack
             {
                 Name = t.Name,
@@ -758,6 +773,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
             _engine.StartRecording(Tracks.ToList(), recordDirectory);
             _midiStatusNote = "Running";
+
+            if (ShouldPreRollBeforeClock())
+            {
+                // Keep recording for a few beats before the synth is told to
+                // start, so its first beat is captured in full rather than clipped.
+                StartMidiClockAfterPreRoll();
+                RefreshTransport();
+                return;
+            }
         }
         else
         {
@@ -770,6 +794,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void Stop()
     {
+        CancelPreRoll();
         _midiClock.Stop();
         _midiStatusNote = "Stopped";
         _engine.Stop();
@@ -808,6 +833,45 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         OnPropertyChanged(nameof(MidiClockStatus));
+    }
+
+    private bool ShouldPreRollBeforeClock() =>
+        SendMidiClock && _selectedMidiDevice != NoMidiLabel && PreRollBeats > 0;
+
+    private void StartMidiClockAfterPreRoll()
+    {
+        CancelPreRoll();
+
+        double delaySeconds = PreRollBeats * (60.0 / _tempo);
+        _midiStatusNote = $"Pre-roll {PreRollBeats} beat{(PreRollBeats == 1 ? string.Empty : "s")}...";
+        OnPropertyChanged(nameof(MidiClockStatus));
+
+        _preRollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(delaySeconds) };
+        _preRollTimer.Tick += OnPreRollElapsed;
+        _preRollTimer.Start();
+    }
+
+    private void OnPreRollElapsed(object? sender, EventArgs e)
+    {
+        CancelPreRoll();
+
+        // The user may have pressed Stop during the pre-roll; only start the
+        // clock if we are still recording.
+        if (Mode == TransportMode.Recording)
+        {
+            StartMidiClock();
+            RefreshTransport();
+        }
+    }
+
+    private void CancelPreRoll()
+    {
+        if (_preRollTimer != null)
+        {
+            _preRollTimer.Stop();
+            _preRollTimer.Tick -= OnPreRollElapsed;
+            _preRollTimer = null;
+        }
     }
 
     private void ShowAsioPanel()
