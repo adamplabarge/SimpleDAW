@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -81,8 +82,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _meterTimer.Tick += UpdateMeters;
         _meterTimer.Start();
 
+        // Playhead updates are driven by the render loop (not the 33ms meter
+        // timer) so the timeline ruler and follow-scroll move in step with
+        // what's actually being painted, instead of visibly stepping every
+        // 33ms while redraws happen every ~16ms.
+        CompositionTarget.Rendering += OnRendering;
+
         _suppressMonitor = false;
         StartMonitorSafe();
+    }
+
+    private void OnRendering(object? sender, EventArgs e)
+    {
+        PlayheadSeconds = _engine.PositionSeconds;
     }
 
     public ObservableCollection<TrackModel> Tracks { get; } = new();
@@ -962,8 +974,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         OnPropertyChanged(nameof(MidiClockStatus));
 
-        // Timeline playhead and length.
-        PlayheadSeconds = _engine.PositionSeconds;
+        // Timeline length. PlayheadSeconds itself is kept up to date by
+        // OnRendering (render-cadence), not here.
         double maxDuration = 0.0;
         foreach (var track in Tracks)
         {
@@ -1039,6 +1051,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
+        CompositionTarget.Rendering -= OnRendering;
         _meterTimer.Stop();
         _midiClock.Dispose();
         _engine.Dispose();

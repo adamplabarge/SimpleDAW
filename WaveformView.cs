@@ -21,6 +21,12 @@ public sealed class WaveformView : FrameworkElement
     private readonly Pen _playheadPen;
     private int _lastVersion = -1;
 
+    // Reused across frames so redrawing while following the playhead (which
+    // happens every render frame) doesn't allocate a new envelope buffer
+    // each time. Grown on demand, never shrunk.
+    private float[] _envMin = Array.Empty<float>();
+    private float[] _envMax = Array.Empty<float>();
+
     public WaveformView()
     {
         _centrePen = new Pen(CentreBrush, 1);
@@ -128,21 +134,27 @@ public sealed class WaveformView : FrameworkElement
         if (buffer != null && buffer.Count > 0)
         {
             int pixels = Math.Max(1, (int)width);
-            var envelope = buffer.GetEnvelopePixels(offset, pps, pixels);
+            if (_envMin.Length < pixels)
+            {
+                _envMin = new float[pixels];
+                _envMax = new float[pixels];
+            }
+
+            buffer.FillEnvelopePixels(offset, pps, _envMin, _envMax, pixels);
             double halfHeight = centre;
 
             var geometry = new StreamGeometry();
             using (var ctx = geometry.Open())
             {
-                ctx.BeginFigure(new Point(0, centre - (envelope[0].Max * halfHeight)), true, true);
-                for (int x = 1; x < envelope.Length; x++)
+                ctx.BeginFigure(new Point(0, centre - (_envMax[0] * halfHeight)), true, true);
+                for (int x = 1; x < pixels; x++)
                 {
-                    ctx.LineTo(new Point(x, centre - (envelope[x].Max * halfHeight)), true, false);
+                    ctx.LineTo(new Point(x, centre - (_envMax[x] * halfHeight)), true, false);
                 }
 
-                for (int x = envelope.Length - 1; x >= 0; x--)
+                for (int x = pixels - 1; x >= 0; x--)
                 {
-                    ctx.LineTo(new Point(x, centre - (envelope[x].Min * halfHeight)), true, false);
+                    ctx.LineTo(new Point(x, centre - (_envMin[x] * halfHeight)), true, false);
                 }
             }
 

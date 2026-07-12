@@ -74,23 +74,27 @@ public sealed class WaveformBuffer
     }
 
     /// <summary>
-    /// Produces a min/max envelope for a horizontal window: one pair per output
-    /// pixel starting at <paramref name="offsetSeconds"/> at the given zoom.
+    /// Fills a min/max envelope for a horizontal window into caller-supplied
+    /// buffers: one pair per output pixel starting at
+    /// <paramref name="offsetSeconds"/> at the given zoom. Callers own and
+    /// reuse <paramref name="destMin"/>/<paramref name="destMax"/> (each must
+    /// be at least <paramref name="pixelCount"/> long) so repeated redraws
+    /// (e.g. every frame while following the playhead) don't allocate.
     /// </summary>
-    public (float Min, float Max)[] GetEnvelopePixels(double offsetSeconds, double pixelsPerSecond, int pixelCount)
+    public void FillEnvelopePixels(double offsetSeconds, double pixelsPerSecond, float[] destMin, float[] destMax, int pixelCount)
     {
         if (pixelCount < 1)
         {
             pixelCount = 1;
         }
 
-        var result = new (float Min, float Max)[pixelCount];
-
         lock (_sync)
         {
             if (_count == 0 || SampleRate <= 0 || pixelsPerSecond <= 0)
             {
-                return result;
+                Array.Clear(destMin, 0, pixelCount);
+                Array.Clear(destMax, 0, pixelCount);
+                return;
             }
 
             double slicesPerSecond = (double)SampleRate / SamplesPerSlice;
@@ -126,10 +130,9 @@ public sealed class WaveformBuffer
                     }
                 }
 
-                result[x] = (mn, mx);
+                destMin[x] = mn;
+                destMax[x] = mx;
             }
         }
-
-        return result;
     }
 }
