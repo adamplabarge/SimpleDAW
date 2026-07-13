@@ -1,9 +1,7 @@
-using System.ComponentModel;
-
 namespace SimpleDAW;
 
 /// <summary>Live level for a single hardware input channel, shown in the meter strip.</summary>
-public sealed class ChannelMeter : INotifyPropertyChanged
+public sealed class ChannelMeter : ObservableObject
 {
     private float _level;
 
@@ -26,14 +24,7 @@ public sealed class ChannelMeter : INotifyPropertyChanged
     public bool IsMuted
     {
         get => _isMuted;
-        set
-        {
-            if (_isMuted != value)
-            {
-                _isMuted = value;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMuted)));
-            }
-        }
+        set => Set(ref _isMuted, value);
     }
 
     private float _gain = 0.5f;
@@ -52,7 +43,7 @@ public sealed class ChannelMeter : INotifyPropertyChanged
             if (Math.Abs(_gain - clamped) > 0.0001f)
             {
                 _gain = clamped;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Gain)));
+                OnPropertyChanged();
             }
         }
     }
@@ -65,10 +56,8 @@ public sealed class ChannelMeter : INotifyPropertyChanged
             if (Math.Abs(_level - value) > 0.001f)
             {
                 _level = value;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Level)));
+                OnPropertyChanged();
             }
         }
     }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
 }

@@ -1,6 +1,4 @@
-using System.ComponentModel;
 using System.IO;
-using System.Runtime.CompilerServices;
 
 namespace SimpleDAW;
 
@@ -9,7 +7,7 @@ namespace SimpleDAW;
 /// hardware input channel (e.g. an input on the TASCAM Model 12), armed for
 /// recording, and has a recorded audio file once something has been captured.
 /// </summary>
-public class TrackModel : INotifyPropertyChanged
+public class TrackModel : ObservableObject
 {
     private string _name = "Track";
     private int _inputChannel;
@@ -104,21 +102,4 @@ public class TrackModel : INotifyPropertyChanged
 
     /// <summary>Envelope of the recorded audio, drawn on the track's timeline.</summary>
     public WaveformBuffer Waveform { get; } = new();
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
-    {
-        if (EqualityComparer<T>.Default.Equals(field, value))
-        {
-            return false;
-        }
-
-        field = value;
-        OnPropertyChanged(name);
-        return true;
-    }
-
-    private void OnPropertyChanged([CallerMemberName] string? name = null) =>
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

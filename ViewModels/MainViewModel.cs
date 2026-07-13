@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
@@ -15,7 +14,7 @@ namespace SimpleDAW;
 /// and exposes the transport commands (Play / Record / Stop / Back to start),
 /// tempo and device selection to the UI.
 /// </summary>
-public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
+public sealed class MainViewModel : ObservableObject, IDisposable
 {
     public const string WasapiLabel = "Windows Default (WASAPI)";
     public const string NoMidiLabel = "None";
@@ -1168,23 +1167,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(MidiClockStatus));
         OnPropertyChanged(nameof(IsTransportActive));
     }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
-    {
-        if (EqualityComparer<T>.Default.Equals(field, value))
-        {
-            return false;
-        }
-
-        field = value;
-        OnPropertyChanged(name);
-        return true;
-    }
-
-    private void OnPropertyChanged([CallerMemberName] string? name = null) =>
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
     public void Dispose()
     {
