@@ -711,6 +711,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         ClickEnabled = project.ClickEnabled;
         ClickAccent = project.ClickAccent;
         ClickVolume = project.ClickVolume;
+        PixelsPerSecond = project.PixelsPerSecond;
 
         foreach (var pt in project.Tracks)
         {
@@ -739,6 +740,27 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         RefreshInputChannels();
         RefreshTransport();
         StartMonitorSafe();
+        ApplySavedInputChannelSettings(project.InputChannels);
+    }
+
+    /// <summary>
+    /// Restores per-hardware-input-channel gain/mute after a project load.
+    /// Matched by channel index against whatever the currently selected
+    /// device actually exposes, so settings for channels the device no
+    /// longer has (or doesn't yet have, if <see cref="StartMonitorSafe"/>
+    /// hasn't opened the device) are simply skipped.
+    /// </summary>
+    private void ApplySavedInputChannelSettings(IReadOnlyList<ProjectInputChannel> saved)
+    {
+        foreach (var entry in saved)
+        {
+            var meter = MasterInputMeters.FirstOrDefault(m => m.Index == entry.Index);
+            if (meter != null)
+            {
+                meter.Gain = entry.Gain;
+                meter.IsMuted = entry.IsMuted;
+            }
+        }
     }
 
     private void SaveProject()
@@ -817,6 +839,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             ClickEnabled = _clickEnabled,
             ClickAccent = _clickAccent,
             ClickVolume = _clickVolume,
+            PixelsPerSecond = _pixelsPerSecond,
             Tracks = Tracks.Select(t => new ProjectTrack
             {
                 Name = t.Name,
@@ -826,6 +849,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 Volume = t.Volume,
                 Pan = t.Pan,
                 RecordedFilePath = t.RecordedFilePath,
+            }).ToList(),
+            InputChannels = MasterInputMeters.Select(m => new ProjectInputChannel
+            {
+                Index = m.Index,
+                Gain = m.Gain,
+                IsMuted = m.IsMuted,
             }).ToList(),
         };
 
