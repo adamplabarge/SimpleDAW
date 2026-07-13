@@ -175,9 +175,10 @@ public sealed class AudioEngine : IDisposable
                 list.Add(new AudioOutputInfo(device.ID, device.FriendlyName));
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Ignore enumeration failures and return what we have.
+            AppLog.Warn("GetRenderDevices: enumeration failed", ex);
         }
 
         return list;
@@ -198,8 +199,9 @@ public sealed class AudioEngine : IDisposable
                 using var probe = new AsioOut(AsioDriverName);
                 return probe.DriverInputChannelCount;
             }
-            catch
+            catch (Exception ex)
             {
+                AppLog.Warn($"GetInputChannelCount: ASIO probe of '{AsioDriverName}' failed", ex);
                 return 0;
             }
         }
@@ -210,8 +212,9 @@ public sealed class AudioEngine : IDisposable
             var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
             return device.AudioClient.MixFormat.Channels;
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warn("GetInputChannelCount: WASAPI default capture device query failed", ex);
             return 2;
         }
     }
@@ -250,9 +253,10 @@ public sealed class AudioEngine : IDisposable
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 // Fall through to "unknown".
+                AppLog.Warn($"GetDeviceSampleRate: ASIO probe of '{AsioDriverName}' failed", ex);
             }
 
             return 0;
@@ -264,8 +268,9 @@ public sealed class AudioEngine : IDisposable
             var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
             return device.AudioClient.MixFormat.SampleRate;
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warn("GetDeviceSampleRate: WASAPI default capture device query failed", ex);
             return 0;
         }
     }
@@ -358,6 +363,7 @@ public sealed class AudioEngine : IDisposable
         catch (Exception ex)
         {
             LastError = ex.Message;
+            AppLog.Warn("StartMonitor failed", ex);
             Stop();
         }
 
@@ -482,8 +488,9 @@ public sealed class AudioEngine : IDisposable
         {
             return enumerator.GetDevice(OutputDeviceId);
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warn($"GetRenderDevice: opening output device '{OutputDeviceId}' failed, falling back to default", ex);
             return enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
         }
     }
@@ -514,6 +521,7 @@ public sealed class AudioEngine : IDisposable
         catch (Exception ex)
         {
             LastError = ex.Message;
+            AppLog.Warn("StartPlayback failed", ex);
             Stop();
         }
     }
@@ -551,6 +559,7 @@ public sealed class AudioEngine : IDisposable
         catch (Exception ex)
         {
             LastError = ex.Message;
+            AppLog.Warn("StartRecording failed", ex);
             Stop();
         }
     }
@@ -607,8 +616,9 @@ public sealed class AudioEngine : IDisposable
             {
                 StartWasapiRender(BuildMixer(), subscribeStopped: false);
             }
-            catch
+            catch (Exception ex)
             {
+                AppLog.Warn("StartWasapiRecording: opening WASAPI render for monitoring/click failed", ex);
                 _wasapiOut = null;
             }
         }
@@ -881,28 +891,28 @@ public sealed class AudioEngine : IDisposable
         {
             _asio.AudioAvailable -= OnAsioAudioAvailable;
             _asio.PlaybackStopped -= OnDeviceStopped;
-            try { _asio.Stop(); } catch { }
+            try { _asio.Stop(); } catch (Exception ex) { AppLog.Warn("Stop: _asio.Stop() failed", ex); }
             _asio.Dispose();
             _asio = null;
         }
 
         if (_wasapiCapture != null)
         {
-            try { _wasapiCapture.StopRecording(); } catch { }
+            try { _wasapiCapture.StopRecording(); } catch (Exception ex) { AppLog.Warn("Stop: _wasapiCapture.StopRecording() failed", ex); }
             _wasapiCapture.Dispose();
             _wasapiCapture = null;
         }
 
         if (_wasapiOut != null)
         {
-            try { _wasapiOut.Stop(); } catch { }
+            try { _wasapiOut.Stop(); } catch (Exception ex) { AppLog.Warn("Stop: _wasapiOut.Stop() failed", ex); }
             _wasapiOut.Dispose();
             _wasapiOut = null;
         }
 
         if (_renderResampler != null)
         {
-            try { _renderResampler.Dispose(); } catch { }
+            try { _renderResampler.Dispose(); } catch (Exception ex) { AppLog.Warn("Stop: _renderResampler.Dispose() failed", ex); }
             _renderResampler = null;
         }
 

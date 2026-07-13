@@ -679,6 +679,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception ex)
         {
             AudioStatus = $"Failed to open project: {ex.Message}";
+            AppLog.Warn($"LoadProject: failed to load '{path}'", ex);
             return;
         }
 
@@ -837,6 +838,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception ex)
         {
             AudioStatus = $"Failed to save project: {ex.Message}";
+            AppLog.Warn($"WriteProject: failed to save '{path}'", ex);
         }
     }
 
@@ -878,6 +880,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception ex)
         {
             AudioStatus = $"Mixdown failed: {ex.Message}";
+            AppLog.Warn($"Mixdown: export to '{dialog.FileName}' failed", ex);
         }
     }
 
@@ -1031,9 +1034,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             _engine.ShowAsioControlPanel();
         }
-        catch
+        catch (Exception ex)
         {
             // Driver may not expose a panel; ignore.
+            AppLog.Warn("ShowAsioPanel: driver control panel failed to open", ex);
         }
     }
 

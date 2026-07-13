@@ -68,9 +68,10 @@ public static class WaveformLoader
                 buffer.Add(min, max);
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Leave the buffer empty if the file can't be read.
+            AppLog.Warn($"WaveformLoader: failed to load waveform from '{path}'", ex);
         }
     }
 }

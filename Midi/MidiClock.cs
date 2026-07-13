@@ -115,9 +115,10 @@ public sealed class MidiClock : IDisposable
                 {
                     _midiOut.Send(StopMessage);
                 }
-                catch
+                catch (Exception ex)
                 {
                     // Ignore send failures during shutdown.
+                    AppLog.Warn("MidiClock.Stop: sending Stop message failed", ex);
                 }
 
                 _midiOut.Dispose();
