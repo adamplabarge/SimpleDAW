@@ -9,22 +9,37 @@
         Background="#1E1E1E">
     <Window.Resources>
         <local:PlusOneConverter x:Key="PlusOne"/>
+
+        <!-- Centralized colour palette so the same hex values aren't repeated
+             throughout every style/template below. -->
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#EEEEEE"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#AAAAAA"/>
+        <SolidColorBrush x:Key="TextDisabledBrush" Color="#777777"/>
+        <SolidColorBrush x:Key="WhiteBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#252526"/>
+        <SolidColorBrush x:Key="SurfaceBackgroundBrush" Color="#2D2D30"/>
+        <SolidColorBrush x:Key="InputBackgroundBrush" Color="#2A2A2A"/>
+        <SolidColorBrush x:Key="HoverBackgroundBrush" Color="#3A3A3A"/>
+        <SolidColorBrush x:Key="DefaultBorderBrush" Color="#4A4A4A"/>
+        <SolidColorBrush x:Key="SeparatorBrush" Color="#555555"/>
+        <SolidColorBrush x:Key="HighlightBackgroundBrush" Color="#094771"/>
+
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#EEEEEE"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#2A2A2A"/>
-            <Setter Property="Foreground" Value="#EEEEEE"/>
-            <Setter Property="BorderBrush" Value="#4A4A4A"/>
+            <Setter Property="Background" Value="{StaticResource InputBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DefaultBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CaretBrush" Value="#EEEEEE"/>
+            <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}"/>
             <Setter Property="Padding" Value="4,2"/>
         </Style>
         <Style TargetType="ComboBox">
-            <Setter Property="Foreground" Value="#EEEEEE"/>
-            <Setter Property="Background" Value="#3A3A3A"/>
-            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Background" Value="{StaticResource HoverBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource SeparatorBrush}"/>
             <Setter Property="Height" Value="26"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -43,7 +58,7 @@
                                                     <ColumnDefinition Width="20"/>
                                                 </Grid.ColumnDefinitions>
                                                 <Path Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                      Data="M 0 0 L 4 4 L 8 0 Z" Fill="#EEEEEE"/>
+                                                      Data="M 0 0 L 4 4 L 8 0 Z" Fill="{StaticResource TextPrimaryBrush}"/>
                                             </Grid>
                                         </Border>
                                     </ControlTemplate>
@@ -58,7 +73,7 @@
                             <Popup x:Name="Popup" Placement="Bottom" AllowsTransparency="True"
                                    Focusable="False" PopupAnimation="Slide"
                                    IsOpen="{TemplateBinding IsDropDownOpen}">
-                                <Border Background="#2D2D30" BorderBrush="#555555" BorderThickness="1"
+                                <Border Background="{StaticResource SurfaceBackgroundBrush}" BorderBrush="{StaticResource SeparatorBrush}" BorderThickness="1"
                                         MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
                                     <ScrollViewer>
@@ -73,20 +88,20 @@
             </Setter>
         </Style>
         <Style TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="#EEEEEE"/>
-            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceBackgroundBrush}"/>
             <Setter Property="Padding" Value="6,3"/>
             <Style.Triggers>
                 <Trigger Property="IsHighlighted" Value="True">
-                    <Setter Property="Background" Value="#094771"/>
-                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                    <Setter Property="Background" Value="{StaticResource HighlightBackgroundBrush}"/>
+                    <Setter Property="Foreground" Value="{StaticResource WhiteBrush}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
         <Style TargetType="Button">
-            <Setter Property="Foreground" Value="#EEEEEE"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
             <Setter Property="Background" Value="#262626"/>
-            <Setter Property="BorderBrush" Value="#4A4A4A"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DefaultBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="Template">
@@ -102,15 +117,15 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="#1F1F1F"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#3A3A3A"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource HoverBackgroundBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="#141414"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#2A2A2A"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource InputBackgroundBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Root" Property="Background" Value="#1B1B1B"/>
-                                <Setter Property="Foreground" Value="#777777"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextDisabledBrush}"/>
                                 <Setter TargetName="Root" Property="BorderBrush" Value="#2B2B2B"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -124,13 +139,13 @@
             <Setter Property="Margin" Value="4,0"/>
             <Setter Property="FontSize" Value="18"/>
             <Setter Property="Background" Value="#242424"/>
-            <Setter Property="Foreground" Value="#FFFFFF"/>
-            <Setter Property="BorderBrush" Value="#4A4A4A"/>
+            <Setter Property="Foreground" Value="{StaticResource WhiteBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DefaultBorderBrush}"/>
         </Style>
         <Style x:Key="RecToggleButton" TargetType="ToggleButton">
             <Setter Property="Foreground" Value="#DDDDDD"/>
-            <Setter Property="Background" Value="#2A2A2A"/>
-            <Setter Property="BorderBrush" Value="#4A4A4A"/>
+            <Setter Property="Background" Value="{StaticResource InputBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DefaultBorderBrush}"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -148,7 +163,7 @@
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="#8E1B1B"/>
                                 <Setter TargetName="Root" Property="BorderBrush" Value="#C83232"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter Property="Foreground" Value="{StaticResource WhiteBrush}"/>
                             </Trigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
@@ -166,7 +181,7 @@
         <!-- Blue "M" mute toggle used by tracks and input channel meters -->
         <Style x:Key="MuteToggleButton" TargetType="ToggleButton">
             <Setter Property="Foreground" Value="#8FB8DE"/>
-            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="Background" Value="{StaticResource InputBackgroundBrush}"/>
             <Setter Property="BorderBrush" Value="#3A6EA5"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Template">
@@ -185,7 +200,7 @@
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="#2D7DD2"/>
                                 <Setter TargetName="Root" Property="BorderBrush" Value="#5AA0E0"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter Property="Foreground" Value="{StaticResource WhiteBrush}"/>
                             </Trigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
@@ -205,7 +220,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Separator">
-                        <Border Height="1" Margin="6,3" Background="#4A4A4A"/>
+                        <Border Height="1" Margin="6,3" Background="{StaticResource DefaultBorderBrush}"/>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -218,7 +233,7 @@
                     <Popup x:Name="Popup" Placement="Bottom" AllowsTransparency="True"
                            Focusable="False" PopupAnimation="Fade"
                            IsOpen="{TemplateBinding IsSubmenuOpen}">
-                        <Border Background="#252526" BorderBrush="#4A4A4A" BorderThickness="1">
+                        <Border Background="{StaticResource PanelBackgroundBrush}" BorderBrush="{StaticResource DefaultBorderBrush}" BorderThickness="1">
                             <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
                         </Border>
                     </Popup>
@@ -240,21 +255,21 @@
             </Border>
             <ControlTemplate.Triggers>
                 <Trigger Property="IsHighlighted" Value="True">
-                    <Setter TargetName="Border" Property="Background" Value="#094771"/>
+                    <Setter TargetName="Border" Property="Background" Value="{StaticResource HighlightBackgroundBrush}"/>
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Foreground" Value="#777777"/>
+                    <Setter Property="Foreground" Value="{StaticResource TextDisabledBrush}"/>
                 </Trigger>
             </ControlTemplate.Triggers>
         </ControlTemplate>
 
         <Style TargetType="Menu">
-            <Setter Property="Background" Value="#2D2D30"/>
-            <Setter Property="Foreground" Value="#EEEEEE"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
         </Style>
 
         <Style TargetType="MenuItem">
-            <Setter Property="Foreground" Value="#EEEEEE"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
             <Setter Property="Template" Value="{StaticResource DarkSubmenuItem}"/>
             <Style.Triggers>
                 <Trigger Property="Role" Value="TopLevelHeader">
@@ -292,7 +307,7 @@
         </Grid.RowDefinitions>
 
         <!-- Transport + tempo -->
-        <Border Grid.Row="0" Background="#252526" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+        <Border Grid.Row="0" Background="{StaticResource PanelBackgroundBrush}" CornerRadius="6" Padding="10" Margin="0,0,0,8">
             <StackPanel Orientation="Horizontal">
                 <Button Style="{StaticResource TransportButton}" Content="⏮"
                         ToolTip="Back to start" Command="{Binding BackToStartCommand}"/>
@@ -307,7 +322,7 @@
                 <TextBox Width="60" VerticalContentAlignment="Center"
                          Text="{Binding Tempo, UpdateSourceTrigger=LostFocus, StringFormat=F1}"/>
 
-                <CheckBox Content="Send MIDI clock" Foreground="#EEEEEE" VerticalAlignment="Center"
+                <CheckBox Content="Send MIDI clock" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"
                           Margin="16,0,0,0" IsChecked="{Binding SendMidiClock}"
                           ToolTip="When unchecked, Play/Record run without sending a MIDI clock"/>
 
@@ -317,7 +332,7 @@
                           SelectedItem="{Binding PreRollBeats}"
                           ToolTip="Beats to record before the MIDI clock starts, so the first beat is fully captured"/>
 
-                <CheckBox Content="Click" Foreground="#EEEEEE" VerticalAlignment="Center"
+                <CheckBox Content="Click" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"
                           Margin="24,0,0,0" IsChecked="{Binding ClickEnabled}"
                           ToolTip="Play a metronome click on every beat during record and playback"/>
                 <ComboBox Width="110" Margin="6,0,0,0" VerticalContentAlignment="Center"
@@ -337,7 +352,7 @@
         </Border>
 
         <!-- Device selection -->
-        <Border Grid.Row="1" Background="#252526" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+        <Border Grid.Row="1" Background="{StaticResource PanelBackgroundBrush}" CornerRadius="6" Padding="10" Margin="0,0,0,8">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Audio input"/>
@@ -370,7 +385,7 @@
                            Foreground="#C586C0"/>
 
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <TextBlock Text="Inputs" Margin="0,0,10,0" Foreground="#AAAAAA"/>
+                    <TextBlock Text="Inputs" Margin="0,0,10,0" Foreground="{StaticResource TextSecondaryBrush}"/>
                     <ItemsControl ItemsSource="{Binding MasterInputMeters}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -400,7 +415,7 @@
                                                 ToolTip="Input channel record level (scales this channel's meter and anything recorded from it). Double-click to reset to 50%."/>
                                     </StackPanel>
                                     <TextBlock Text="{Binding Label}" FontSize="10"
-                                               HorizontalAlignment="Center" Foreground="#AAAAAA"/>
+                                               HorizontalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"/>
                                     <ToggleButton Content="M" Width="22" Height="20" Margin="0,3,0,0"
                                                   FontSize="11"
                                                   IsChecked="{Binding IsMuted}"
@@ -417,16 +432,16 @@
         <!-- Track toolbar -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2,0,0,6">
             <Button Content="+ Add Track" Padding="10,4" Command="{Binding AddTrackCommand}"/>
-            <Border Width="1" Background="#4A4A4A" Margin="12,2,12,2"/>
+            <Border Width="1" Background="{StaticResource DefaultBorderBrush}" Margin="12,2,12,2"/>
             <TextBlock Text="Zoom" Margin="0,0,6,0"/>
             <Button Content="−" Width="30" Padding="0,4" Command="{Binding ZoomOutCommand}"/>
             <Button Content="+" Width="30" Padding="0,4" Margin="6,0,0,0" Command="{Binding ZoomInCommand}"/>
             <TextBlock Text="Arm a track (REC) and assign its input channel to record from the Model 12."
-                       Margin="16,0,0,0" Foreground="#AAAAAA"/>
+                       Margin="16,0,0,0" Foreground="{StaticResource TextSecondaryBrush}"/>
         </StackPanel>
 
         <!-- Tracks -->
-        <Border Grid.Row="3" Background="#252526" CornerRadius="6">
+        <Border Grid.Row="3" Background="{StaticResource PanelBackgroundBrush}" CornerRadius="6">
             <DockPanel>
                 <ScrollBar DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="4"
                            Minimum="0" Maximum="{Binding TimelineMaxSeconds}"
@@ -443,7 +458,7 @@
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="#2D2D30" CornerRadius="4" Padding="8" Margin="4">
+                        <Border Background="{StaticResource SurfaceBackgroundBrush}" CornerRadius="4" Padding="8" Margin="4">
                             <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -467,14 +482,14 @@
                                               Style="{StaticResource RecToggleButton}"/>
 
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,10,0">
-                                    <TextBlock Text="In" Margin="0,0,4,0" Foreground="#EEEEEE"/>
+                                    <TextBlock Text="In" Margin="0,0,4,0" Foreground="{StaticResource TextPrimaryBrush}"/>
                                     <ComboBox Width="78"
                                               ItemsSource="{Binding DataContext.AvailableInputChannels, RelativeSource={RelativeSource AncestorType=Window}}"
                                               SelectedValuePath="Index"
                                               SelectedValue="{Binding InputChannel}">
                                         <ComboBox.ItemTemplate>
                                             <DataTemplate>
-                                                <TextBlock Text="{Binding Label}" Foreground="#EEEEEE"/>
+                                                <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextPrimaryBrush}"/>
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
@@ -487,13 +502,13 @@
                                               Style="{StaticResource MuteToggleButton}"/>
 
                                 <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="0,0,10,0">
-                                    <TextBlock Text="Vol" Margin="0,0,4,0" Foreground="#EEEEEE"/>
+                                    <TextBlock Text="Vol" Margin="0,0,4,0" Foreground="{StaticResource TextPrimaryBrush}"/>
                                     <Slider Width="90" Minimum="0" Maximum="1"
                                             VerticalAlignment="Center" Value="{Binding Volume}"/>
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="0,0,10,0">
-                                    <TextBlock Text="Pan" Margin="0,0,4,0" Foreground="#EEEEEE"/>
+                                    <TextBlock Text="Pan" Margin="0,0,4,0" Foreground="{StaticResource TextPrimaryBrush}"/>
                                     <Slider Width="90" Minimum="-1" Maximum="1"
                                             VerticalAlignment="Center" Value="{Binding Pan}"
                                             ToolTip="Left / Right pan (centre = 0)"/>
@@ -505,7 +520,7 @@
 
                                 <StackPanel Grid.Column="7" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding DurationText}" FontSize="11"
-                                               Foreground="#AAAAAA" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
                                                Margin="0,0,6,0" ToolTip="Recorded length (m:ss.d)"/>
                                     <TextBlock Text="●" FontSize="16"
                                                ToolTip="Has recorded audio" VerticalAlignment="Center">
