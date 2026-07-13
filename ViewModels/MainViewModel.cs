@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -60,11 +61,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         BackToStartCommand = new RelayCommand(BackToStart);
         ShowAsioPanelCommand = new RelayCommand(ShowAsioPanel, () => _selectedAudioDevice != WasapiLabel);
         RefreshDevicesCommand = new RelayCommand(RefreshDevices);
-        NewProjectCommand = new RelayCommand(NewProject);
-        OpenProjectCommand = new RelayCommand(OpenProject);
-        SaveProjectCommand = new RelayCommand(SaveProject);
-        SaveProjectAsCommand = new RelayCommand(SaveProjectAs);
-        MixdownCommand = new RelayCommand(Mixdown, () => Tracks.Any(t => t.HasAudio));
+        NewProjectCommand = new RelayCommand(NewProject, () => !IsBusy);
+        OpenProjectCommand = new RelayCommand(OpenProject, () => !IsBusy);
+        SaveProjectCommand = new RelayCommand(SaveProject, () => !IsBusy);
+        SaveProjectAsCommand = new RelayCommand(SaveProjectAs, () => !IsBusy);
+        MixdownCommand = new RelayCommand(Mixdown, () => !IsBusy && Tracks.Any(t => t.HasAudio));
         ZoomInCommand = new RelayCommand(() => PixelsPerSecond = Math.Min(1000.0, PixelsPerSecond * 1.5));
         ZoomOutCommand = new RelayCommand(() => PixelsPerSecond = Math.Max(10.0, PixelsPerSecond / 1.5));
 
@@ -322,6 +323,30 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         get => _audioStatus;
         private set => Set(ref _audioStatus, value);
+    }
+
+    private bool _isBusy;
+
+    /// <summary>
+    /// True while a background file operation (mixdown export, project
+    /// save/load) is running. Gates the New/Open/Save/Mixdown commands so
+    /// overlapping operations can't be started from the UI while one is
+    /// already in flight.
+    /// </summary>
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (Set(ref _isBusy, value))
+            {
+                NewProjectCommand.RaiseCanExecuteChanged();
+                OpenProjectCommand.RaiseCanExecuteChanged();
+                SaveProjectCommand.RaiseCanExecuteChanged();
+                SaveProjectAsCommand.RaiseCanExecuteChanged();
+                MixdownCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public double PixelsPerSecond
@@ -668,22 +693,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void LoadProject(string path)
+    private async void LoadProject(string path)
     {
         ProjectFile? project;
+        IsBusy = true;
+        AudioStatus = "Loading project\u2026";
         try
         {
-            project = JsonSerializer.Deserialize<ProjectFile>(File.ReadAllText(path));
+            project = await Task.Run(() => JsonSerializer.Deserialize<ProjectFile>(File.ReadAllText(path)));
         }
         catch (Exception ex)
         {
             AudioStatus = $"Failed to open project: {ex.Message}";
             AppLog.Warn($"LoadProject: failed to load '{path}'", ex);
+            IsBusy = false;
             return;
         }
 
         if (project == null)
         {
+            IsBusy = false;
             return;
         }
 
@@ -726,7 +755,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 RecordedFilePath = pt.RecordedFilePath,
             };
 
-            WaveformLoader.LoadInto(track.Waveform, pt.RecordedFilePath ?? string.Empty);
             track.PropertyChanged += OnTrackPropertyChanged;
             Tracks.Add(track);
         }
@@ -740,6 +768,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RefreshTransport();
         StartMonitorSafe();
         ApplySavedInputChannelSettings(project.InputChannels);
+
+        // Decoding whole audio files into waveform envelopes can be slow for
+        // long recordings; do it off the UI thread so opening a project with
+        // many/long tracks doesn't freeze the window. Each track's waveform
+        // buffer is independent, so these can run in parallel; the views pick
+        // up the data as soon as it's populated (same mechanism they use to
+        // show audio arriving live while recording).
+        var tracksSnapshot = Tracks.ToList();
+        try
+        {
+            await Task.WhenAll(tracksSnapshot.Select(t => Task.Run(() =>
+                WaveformLoader.LoadInto(t.Waveform, t.RecordedFilePath ?? string.Empty))));
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     /// <summary>
@@ -824,7 +869,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return RecordDirectory;
     }
 
-    private void WriteProject(string path)
+    private async void WriteProject(string path)
     {
         var project = new ProjectFile
         {
@@ -857,10 +902,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             }).ToList(),
         };
 
+        IsBusy = true;
         try
         {
-            string json = JsonSerializer.Serialize(project, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(path, json);
+            // Serializing/writing is cheap for typical projects, but offload it
+            // anyway so a project with many tracks never has a chance to hitch
+            // the UI thread.
+            await Task.Run(() =>
+            {
+                string json = JsonSerializer.Serialize(project, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            });
             AudioStatus = $"Saved project: {Path.GetFileName(path)}";
         }
         catch (Exception ex)
@@ -868,9 +920,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             AudioStatus = $"Failed to save project: {ex.Message}";
             AppLog.Warn($"WriteProject: failed to save '{path}'", ex);
         }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
-    private void Mixdown()
+    private async void Mixdown()
     {
         if (!Tracks.Any(t => t.HasAudio))
         {
@@ -898,9 +954,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         // Stop the transport so recorded files are closed and the device is free.
         Stop();
 
+        IsBusy = true;
+        AudioStatus = "Exporting mix\u2026";
         try
         {
-            bool exported = MixdownExporter.Export(Tracks.ToList(), _sampleRate, dialog.FileName);
+            var tracksSnapshot = Tracks.ToList();
+            string outputPath = dialog.FileName;
+            int sampleRate = _sampleRate;
+            bool exported = await Task.Run(() => MixdownExporter.Export(tracksSnapshot, sampleRate, outputPath));
             AudioStatus = exported
                 ? $"Exported mix: {Path.GetFileName(dialog.FileName)}"
                 : "Nothing to mix down.";
@@ -909,6 +970,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             AudioStatus = $"Mixdown failed: {ex.Message}";
             AppLog.Warn($"Mixdown: export to '{dialog.FileName}' failed", ex);
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
