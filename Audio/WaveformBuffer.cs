@@ -25,6 +25,19 @@ public sealed class WaveformBuffer
     // protect readers, which never take a lock at all (see below).
     private readonly object _writeLock = new();
 
+#if DEBUG
+    // Debug-only reentrancy guard for the single-writer invariant described
+    // above. The lock alone would just make a second concurrent writer wait
+    // its turn - safe from data corruption, but it would silently interleave
+    // two logically unrelated write sources (e.g. a live recording and a
+    // project reload both writing the same track's waveform at once), which
+    // is a real logic bug even though it isn't a data race. This makes that
+    // scenario fail fast in Debug builds instead of only ever manifesting as
+    // a garbled waveform. Compiled out entirely in Release, so it costs
+    // nothing there.
+    private int _writerActive;
+#endif
+
     private volatile float[] _min = new float[4096];
     private volatile float[] _max = new float[4096];
     private volatile int _count;
@@ -51,46 +64,86 @@ public sealed class WaveformBuffer
     /// <summary>Appends one envelope slice (minimum and maximum sample values).</summary>
     public void Add(float min, float max)
     {
-        lock (_writeLock)
+        EnterWriter();
+        try
         {
-            var minArr = _min;
-            var maxArr = _max;
-            int count = _count;
-
-            if (count >= minArr.Length)
+            lock (_writeLock)
             {
-                var newMin = new float[minArr.Length * 2];
-                var newMax = new float[maxArr.Length * 2];
-                Array.Copy(minArr, newMin, count);
-                Array.Copy(maxArr, newMax, count);
+                var minArr = _min;
+                var maxArr = _max;
+                int count = _count;
 
-                // Publish the bigger arrays before any reader could observe
-                // the count that requires them.
-                _min = newMin;
-                _max = newMax;
-                minArr = newMin;
-                maxArr = newMax;
+                if (count >= minArr.Length)
+                {
+                    var newMin = new float[minArr.Length * 2];
+                    var newMax = new float[maxArr.Length * 2];
+                    Array.Copy(minArr, newMin, count);
+                    Array.Copy(maxArr, newMax, count);
+
+                    // Publish the bigger arrays before any reader could observe
+                    // the count that requires them.
+                    _min = newMin;
+                    _max = newMax;
+                    minArr = newMin;
+                    maxArr = newMax;
+                }
+
+                minArr[count] = min;
+                maxArr[count] = max;
+
+                // Publish the new element (count) only after it has been fully
+                // written above, so a lock-free reader that sees the new count
+                // always sees fully-written data.
+                _count = count + 1;
+                _version++;
             }
-
-            minArr[count] = min;
-            maxArr[count] = max;
-
-            // Publish the new element (count) only after it has been fully
-            // written above, so a lock-free reader that sees the new count
-            // always sees fully-written data.
-            _count = count + 1;
-            _version++;
+        }
+        finally
+        {
+            ExitWriter();
         }
     }
 
     /// <summary>Clears all stored data (used when a new take starts).</summary>
     public void Clear()
     {
-        lock (_writeLock)
+        EnterWriter();
+        try
         {
-            _count = 0;
-            _version++;
+            lock (_writeLock)
+            {
+                _count = 0;
+                _version++;
+            }
         }
+        finally
+        {
+            ExitWriter();
+        }
+    }
+
+    [System.Diagnostics.Conditional("DEBUG")]
+    private void EnterWriter()
+    {
+#if DEBUG
+        if (System.Threading.Interlocked.Exchange(ref _writerActive, 1) != 0)
+        {
+            throw new InvalidOperationException(
+                "WaveformBuffer.Add/Clear was called while another Add/Clear call was " +
+                "already in progress on the same buffer. This type supports only one " +
+                "writer at a time; a second concurrent writer usually means two " +
+                "unrelated sources (e.g. a live recording and a project reload) are both " +
+                "writing to the same track's waveform at once.");
+        }
+#endif
+    }
+
+    [System.Diagnostics.Conditional("DEBUG")]
+    private void ExitWriter()
+    {
+#if DEBUG
+        System.Threading.Interlocked.Exchange(ref _writerActive, 0);
+#endif
     }
 
     /// <summary>
